@@ -1,0 +1,10 @@
+{
+  "projectId": "animahub",
+  "appId": "1:926962111868:web:1a3d720eb9cea247a540f9",
+  "apiKey": "AIzaSyDp2-sV6rHfkxqtNI39YYq2AcdX4I58Bx0",
+  "authDomain": "animahub.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "animahub.firebasestorage.app",
+  "messagingSenderId": "926962111868",
+  "measurementId": ""
+}

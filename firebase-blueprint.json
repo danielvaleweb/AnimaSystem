@@ -1,0 +1,29 @@
+{
+  "entities": {
+    "Client": {
+      "title": "Client",
+      "description": "Represents a client of the AnimaSystem agency.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "logoInitials": { "type": "string" },
+        "responsible": { "type": "string" },
+        "plan": { "type": "string" },
+        "domain": { "type": "string" },
+        "firebaseProjectId": { "type": "string" },
+        "monthlyValue": { "type": "number" },
+        "dueDate": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["name", "domain", "status", "ownerId"]
+    }
+  },
+  "firestore": {
+    "/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/Client" },
+      "description": "Stores the clients of the agency."
+    }
+  }
+}
