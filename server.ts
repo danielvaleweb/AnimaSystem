@@ -2,9 +2,10 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, query, where, getDocs } from "firebase/firestore";
+import { getFirestore, collection, query, where, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import fs from "fs";
 import cors from "cors";
+import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
 
 // Initialize Firebase using the config
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
@@ -88,6 +89,80 @@ async function startServer() {
     } catch (error: any) {
       console.error(error);
       return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Mercado Pago Create Payment
+  app.post("/api/create-payment", async (req, res) => {
+    try {
+      const { clientId, amount, description, ownerId, clientName } = req.body;
+      if (!amount || !description) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      if (!process.env.MERCADOPAGO_ACCESS_TOKEN) {
+        return res.status(500).json({ error: "Mercado Pago token not configured" });
+      }
+
+      const client = new MercadoPagoConfig({ accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN });
+      const preference = new Preference(client);
+
+      const response = await preference.create({
+        body: {
+          items: [
+            {
+              id: clientId || "monthly-fee",
+              title: description,
+              quantity: 1,
+              unit_price: Number(amount)
+            }
+          ],
+          external_reference: JSON.stringify({ clientId, ownerId, clientName }),
+          // notification_url: `${process.env.APP_URL}/api/webhook/mercadopago`, // Requires public HTTPS URL
+        }
+      });
+
+      return res.json({ id: response.id, init_point: response.init_point });
+    } catch (error: any) {
+      console.error(error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Mercado Pago Webhook (simulated if no public URL, or works if correctly set)
+  app.post("/api/webhook/mercadopago", async (req, res) => {
+    try {
+      if (req.query.type === "payment" && req.query["data.id"]) {
+        const paymentId = req.query["data.id"] as string;
+        const client = new MercadoPagoConfig({ accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN! });
+        const mercadopagoPayment = new Payment(client);
+        
+        const paymentInfo = await mercadopagoPayment.get({ id: paymentId });
+        if (paymentInfo.status === "approved") {
+           // Parse metadata/external_reference
+           const externalRef = paymentInfo.external_reference;
+           if (externalRef) {
+             const data = JSON.parse(externalRef);
+             // Salvar no Firebase
+             await addDoc(collection(db, "transactions"), {
+                ownerId: data.ownerId,
+                type: "entrada",
+                clientName: data.clientName,
+                amount: paymentInfo.transaction_amount,
+                date: new Date(paymentInfo.date_approved!).toISOString().split('T')[0],
+                status: "paid",
+                method: "pix",
+                gateway: "mercadopago",
+                paymentId: paymentInfo.id,
+                createdAt: serverTimestamp()
+             });
+           }
+        }
+      }
+      res.status(200).send("OK");
+    } catch (error: any) {
+      console.error("Webhook error:", error);
+      res.status(500).send("Internal Server Error");
     }
   });
 

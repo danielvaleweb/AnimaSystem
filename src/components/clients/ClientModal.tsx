@@ -41,7 +41,7 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
     const { name, value } = e.target;
     setFormData(prev => ({ 
       ...prev, 
-      [name]: name === 'monthlyValue' || name === 'dueDate' ? Number(value) : value 
+      [name]: value 
     }));
   };
 
@@ -49,6 +49,10 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
     e.preventDefault();
     if (!formData.name || !formData.domain || !formData.firebaseProjectId) return;
     
+    // Cast number fields properly
+    formData.monthlyValue = Number(formData.monthlyValue) || 0;
+    formData.dueDate = Number(formData.dueDate) || 1;
+
     // Generate initials if not provided
     if (!formData.logoInitials) {
       formData.logoInitials = formData.name.substring(0, 2).toUpperCase();

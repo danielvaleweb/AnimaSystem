@@ -556,24 +556,31 @@ export function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
                      <button 
                        onClick={async () => {
                          if (!auth.currentUser) return;
-                         const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
-                         await addDoc(collection(db, 'transactions'), {
-                           ownerId: auth.currentUser.uid,
-                           type: 'entrada',
-                           clientName: client.name,
-                           amount: client.monthlyValue,
-                           date: new Date().toISOString().split('T')[0],
-                           dueDate: new Date().toISOString().split('T')[0],
-                           status: 'paid',
-                           method: 'pix',
-                           gateway: 'asaas',
-                           createdAt: serverTimestamp()
-                         });
-                         alert('Pagamento via Asaas registrado com sucesso!');
+                         try {
+                           const res = await fetch('/api/create-payment', {
+                             method: 'POST',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({
+                               clientId: client.id,
+                               ownerId: auth.currentUser.uid,
+                               clientName: client.name,
+                               amount: client.monthlyValue,
+                               description: `Mensalidade - ${client.name}`,
+                             })
+                           });
+                           const data = await res.json();
+                           if (data.init_point) {
+                             window.open(data.init_point, '_blank');
+                           } else {
+                             alert('Erro ao gerar link: ' + (data.error || 'Desconhecido'));
+                           }
+                         } catch (err: any) {
+                           alert('Erro na requisição: ' + err.message);
+                         }
                        }}
-                       className="flex-1 bg-[#0033cc] hover:bg-[#002299] text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
+                       className="flex-1 bg-[#009ee3] hover:bg-[#0089c7] text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
                      >
-                       Simular Pago via Asaas
+                       Gerar Link Mercado Pago
                      </button>
                    </div>
                  </div>

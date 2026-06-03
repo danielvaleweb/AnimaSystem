@@ -427,7 +427,7 @@ export function FinanceView() {
                     step="0.01"
                     required
                     value={formData.amount || ''}
-                    onChange={e => setFormData({...formData, amount: parseFloat(e.target.value)})}
+                    onChange={e => setFormData({...formData, amount: e.target.value as any})}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-accent"
                     placeholder="0.00"
                   />
