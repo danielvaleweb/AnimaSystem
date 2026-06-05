@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { 
   Search, Filter, Plus, MessageSquare, Clock, 
-  AlertCircle, CheckCircle2, ChevronRight, CircleDashed
+  AlertCircle, CheckCircle2, ChevronRight, CircleDashed, ChevronDown
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../utils';
 import { TicketDetail } from './TicketDetail';
 
@@ -70,6 +71,7 @@ const mockTickets: TicketData[] = [
 export function TicketsView() {
   const [tickets, setTickets] = useState<TicketData[]>(mockTickets);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedTicket, setSelectedTicket] = useState<TicketData | null>(null);
 
@@ -121,7 +123,7 @@ export function TicketsView() {
       </div>
 
       {/* Main List */}
-      <div className="flex-1 bg-zinc-900 border border-zinc-800/50 rounded-[2rem] flex flex-col overflow-hidden">
+      <div className="flex-1 bg-zinc-900 border border-zinc-800/50 rounded-[2rem] flex flex-col relative">
         
         <div className="p-6 border-b border-zinc-800/50 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4 w-full sm:w-auto">
@@ -137,18 +139,60 @@ export function TicketsView() {
             </div>
             
             <div className="relative hidden sm:block">
-              <select 
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="appearance-none bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2.5 pl-4 pr-10 outline-none focus:border-accent/50 transition-all"
+              <button
+                type="button"
+                onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                className="flex items-center justify-between gap-2.5 bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2.5 pl-5 pr-8 outline-none focus:border-accent/50 transition-all select-none cursor-pointer min-w-[160px]"
               >
-                <option value="all">Todos os Status</option>
-                <option value="open">Abertos</option>
-                <option value="analysis">Em Análise</option>
-                <option value="development">Em Desenvolvimento</option>
-                <option value="resolved">Resolvidos</option>
-              </select>
-              <Filter className="w-4 h-4 text-zinc-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <span>
+                  {filterStatus === 'all' ? 'Todos os Status' :
+                   filterStatus === 'open' ? 'Abertos' :
+                   filterStatus === 'analysis' ? 'Em Análise' :
+                   filterStatus === 'development' ? 'Em Desenvolvimento' : 'Resolvidos'}
+                </span>
+                <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0 absolute right-3.5 top-1/2 -translate-y-1/2", isStatusDropdownOpen && "rotate-180")} />
+              </button>
+
+              <AnimatePresence>
+                {isStatusDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setIsStatusDropdownOpen(false)}></div>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                      className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[180px] p-anchored-overlay-enter-active"
+                      style={{ transformOrigin: 'top' }}
+                    >
+                      {[
+                        { val: 'all', label: 'Todos os Status' },
+                        { val: 'open', label: 'Abertos' },
+                        { val: 'analysis', label: 'Em Análise' },
+                        { val: 'development', label: 'Em Desenvolvimento' },
+                        { val: 'resolved', label: 'Resolvidos' }
+                      ].map(item => (
+                        <button
+                          key={item.val}
+                          type="button"
+                          onClick={() => {
+                            setFilterStatus(item.val);
+                            setIsStatusDropdownOpen(false);
+                          }}
+                          className={cn(
+                            "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
+                            filterStatus === item.val
+                              ? "text-accent font-semibold hover:bg-zinc-900/40"
+                              : "text-zinc-300 hover:bg-zinc-900"
+                          )}
+                        >
+                          <span>{item.label}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 

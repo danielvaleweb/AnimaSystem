@@ -6,6 +6,15 @@
   --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --color-accent: #ccff00;
   --color-accent-hover: #b3e600;
+  --animate-marquee: marquee 150s linear infinite;
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
 }
 
 @layer base {
@@ -13,4 +22,100 @@
     @apply bg-zinc-950 text-zinc-100 font-sans antialiased selection:bg-accent selection:text-black;
   }
 }
+
+/* Custom Anchored Overlays transition styles requested by the user */
+.p-anchored-overlay-enter-active {
+  animation: demo-overlay-in 300ms ease-out forwards;
+}
+
+.p-anchored-overlay-leave-active {
+  animation: demo-overlay-out 250ms ease-in forwards;
+}
+
+@keyframes demo-overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(10%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes demo-overlay-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(10%);
+  }
+}
+
+/* Custom Green Input Spinner Arrows without White Background */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0;
+  width: 24px;
+  height: 28px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><polygon points='12,3 21,11 3,11' fill='%23ccff00' /><polygon points='12,21 21,13 3,13' fill='%23ccff00' /></svg>") !important;
+  background-position: center !important;
+  background-size: 16px 20px !important;
+  background-repeat: no-repeat !important;
+  opacity: 0.85;
+  transition: opacity 0.15s ease-in-out;
+  cursor: pointer;
+}
+
+input[type="number"]::-webkit-inner-spin-button:hover,
+input[type="number"]::-webkit-outer-spin-button:hover {
+  opacity: 1;
+}
+
+/* Custom Scrollbar - Sleek Black & Green Design without arrows */
+html, body, * {
+  scrollbar-width: thin;
+  scrollbar-color: #97fb2e #000000;
+}
+
+::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-track-piece,
+::-webkit-scrollbar-corner {
+  background: #000000 !important;
+  background-color: #000000 !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #97fb2e !important;
+  border-radius: 9999px !important;
+  box-shadow: inset 0 0 0 1px rgba(151, 251, 46, 0.1) !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b2ff54 !important;
+}
+
+/* Completely remove and disable all scrollbar arrow buttons */
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-button:start,
+::-webkit-scrollbar-button:end,
+::-webkit-scrollbar-button:vertical,
+::-webkit-scrollbar-button:horizontal,
+::-webkit-scrollbar-button:decrement,
+::-webkit-scrollbar-button:increment {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+
+
 

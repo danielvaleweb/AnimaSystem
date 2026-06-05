@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { 
   X, Paperclip, Send, Clock, User, MessageSquare, 
-  CheckCircle2, AlertCircle, CircleDashed, History, FileDown
+  CheckCircle2, AlertCircle, CircleDashed, History, FileDown,
+  ChevronDown
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../utils';
 import { TicketData, TicketStatus } from './TicketsView';
 
@@ -13,6 +15,8 @@ interface TicketDetailProps {
 
 export function TicketDetail({ ticket, onClose }: TicketDetailProps) {
   const [reply, setReply] = useState('');
+  const [replyType, setReplyType] = useState<'public' | 'internal'>('public');
+  const [isTypeSelectOpen, setIsTypeSelectOpen] = useState(false);
 
   const getStatusDisplay = (status: TicketStatus) => {
     switch (status) {
@@ -139,14 +143,60 @@ export function TicketDetail({ ticket, onClose }: TicketDetailProps) {
                className="w-full bg-transparent p-4 outline-none text-sm text-zinc-200 resize-none h-24 placeholder:text-zinc-500"
              ></textarea>
              <div className="bg-zinc-950/50 p-2 border-t border-zinc-800/50 flex items-center justify-between">
-               <div className="flex gap-1">
+               <div className="flex gap-1 items-center">
                  <button className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors group relative">
                    <Paperclip className="w-4 h-4" />
                  </button>
-                 <select className="bg-transparent text-xs text-zinc-500 outline-none hover:text-zinc-300 cursor-pointer px-2">
-                   <option>Resposta Pública</option>
-                   <option>Nota Interna</option>
-                 </select>
+                 
+                  {/* Custom Dropdown */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsTypeSelectOpen(!isTypeSelectOpen)}
+                      className="flex items-center gap-1 bg-transparent text-xs text-zinc-500 outline-none hover:text-zinc-300 cursor-pointer px-2 py-1 select-none font-medium"
+                    >
+                      <span>{replyType === 'public' ? 'Resposta Pública' : 'Nota Interna'}</span>
+                      <ChevronDown className={cn("w-3 h-3 text-zinc-500 transition-transform duration-200", isTypeSelectOpen && "rotate-180")} />
+                    </button>
+
+                    <AnimatePresence>
+                      {isTypeSelectOpen && (
+                        <>
+                          <div className="fixed inset-0 z-30" onClick={() => setIsTypeSelectOpen(false)}></div>
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            transition={{ duration: 0.3, ease: 'easeOut' }}
+                            className="absolute bottom-full left-2 mb-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[150px]"
+                            style={{ transformOrigin: 'bottom' }}
+                          >
+                            {[
+                              { val: 'public', label: 'Resposta Pública' },
+                              { val: 'internal', label: 'Nota Interna' }
+                            ].map(item => (
+                              <button
+                                key={item.val}
+                                type="button"
+                                onClick={() => {
+                                  setReplyType(item.val as any);
+                                  setIsTypeSelectOpen(false);
+                                }}
+                                className={cn(
+                                  "w-full text-left px-4 py-2.5 text-xs transition-colors flex items-center justify-between cursor-pointer",
+                                  replyType === item.val
+                                    ? "text-accent font-semibold hover:bg-zinc-900/40"
+                                    : "text-zinc-300 hover:bg-zinc-900"
+                                )}
+                              >
+                                <span>{item.label}</span>
+                              </button>
+                            ))}
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
                </div>
                <button className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-zinc-950 font-medium px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50" disabled={!reply.trim()}>
                  <Send className="w-4 h-4" />

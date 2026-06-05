@@ -22,7 +22,7 @@ export interface AlertData {
   severity: 'high' | 'medium' | 'low';
 }
 
-export type ViewType = 'landing' | 'dashboard' | 'clients' | 'client-detail' | 'finance' | 'tickets' | 'monitor' | 'audit' | 'settings';
+export type ViewType = 'landing' | 'dashboard' | 'clients' | 'client-detail' | 'finance' | 'tickets' | 'monitor' | 'audit' | 'settings' | 'leads';
 
 export interface TransactionData {
   id?: string;
@@ -51,5 +51,21 @@ export interface ClientData {
   parsedFirebaseConfig?: Record<string, string>;
   monthlyValue: number;
   dueDate: number;
-  status: 'active' | 'suspended' | 'trial';
+  status: 'active' | 'suspended' | 'trial' | 'ended' | 'developing';
+  cnpj?: string;
+  website?: string;
+  hireDate?: string;
+  endDate?: string;
+  cpf?: string;
+  phone?: string;
+  cep?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  complement?: string;
+  logoUrl?: string;
+  monitorCollections?: { id: string; label: string; collectionPath: string; readWeight: number; writeWeight: number }[];
+  lastMetricsUpdate?: string;
+  lastGcpMetrics?: any;
+  lastRealMetrics?: any;
 }

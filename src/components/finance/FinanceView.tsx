@@ -3,8 +3,9 @@ import {
   DollarSign, ArrowUpRight, ArrowDownRight, CreditCard, 
   QrCode, AlertCircle, FileText, Download, Filter, Search,
   CheckCircle2, Clock, Plus, X, ArrowUpCircle, ArrowDownCircle,
-  Edit2, Trash2
+  Edit2, Trash2, ChevronDown
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { TransactionData } from '../../types';
@@ -13,12 +14,22 @@ import { KPICard } from '../KPICard';
 
 export function FinanceView() {
   const [filter, setFilter] = useState<'all' | 'paid' | 'pending' | 'overdue'>('all');
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [transactions, setTransactions] = useState<TransactionData[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isContractsModalOpen, setIsContractsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Custom dropdown states
+  const [openClientPlanDropdownId, setOpenClientPlanDropdownId] = useState<string | null>(null);
+  const [isFormTypeDropdownOpen, setIsFormTypeDropdownOpen] = useState(false);
+  const [isFormStatusDropdownOpen, setIsFormStatusDropdownOpen] = useState(false);
+  const [isFormMethodDropdownOpen, setIsFormMethodDropdownOpen] = useState(false);
+  const [isFormGatewayDropdownOpen, setIsFormGatewayDropdownOpen] = useState(false);
+
   const [formData, setFormData] = useState<Partial<TransactionData>>({
     type: 'entrada',
     method: 'manual',
@@ -228,10 +239,17 @@ export function FinanceView() {
     <div className="flex flex-col h-full space-y-6 relative">
       
       
-      <div className="flex justify-end">
+      <div className="flex flex-col sm:flex-row justify-end gap-3">
+        <button 
+          onClick={() => setIsContractsModalOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-xl transition-all w-full sm:w-auto text-sm cursor-pointer"
+        >
+          <FileText className="w-4 h-4" />
+          Gerenciar Contratos
+        </button>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-hover text-black font-semibold rounded-xl transition-all"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-hover text-black font-semibold rounded-xl transition-all w-full sm:w-auto text-sm cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Nova Transação
@@ -275,10 +293,10 @@ export function FinanceView() {
       </div>
 
       {/* Transactions List */}
-      <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] flex flex-col flex-1 overflow-hidden">
-        <div className="p-6 border-b border-zinc-800/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4 w-full sm:w-auto">
-            <div className="relative group w-full sm:w-72">
+      <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] flex flex-col flex-1 relative">
+        <div className="p-4 sm:p-6 border-b border-zinc-800/50 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+            <div className="relative group w-full sm:w-72 shrink-0">
               <Search className="w-4 h-4 text-zinc-500 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-accent transition-colors" />
               <input 
                 type="text" 
@@ -289,18 +307,59 @@ export function FinanceView() {
               />
             </div>
             
-            <div className="relative hidden sm:block">
-              <select 
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as any)}
-                className="appearance-none bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2.5 pl-4 pr-10 outline-none focus:border-accent/50 transition-all"
+            <div className="relative w-full sm:w-auto shrink-0 z-30">
+              <button
+                type="button"
+                onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+                className="flex items-center justify-between gap-2.5 bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2.5 pl-5 pr-8 outline-none focus:border-accent/50 transition-all select-none cursor-pointer w-full sm:w-auto sm:min-w-[170px] relative"
               >
-                <option value="all">Todas as Cobranças</option>
-                <option value="paid">Pagas</option>
-                <option value="pending">Aguardando</option>
-                <option value="overdue">Atrasadas</option>
-              </select>
-              <Filter className="w-4 h-4 text-zinc-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <span>
+                  {filter === 'all' ? 'Todas as Cobranças' :
+                   filter === 'paid' ? 'Pagas' :
+                   filter === 'pending' ? 'Aguardando' : 'Atrasadas'}
+                </span>
+                <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0 absolute right-3.5 top-1/2 -translate-y-1/2", isFilterDropdownOpen && "rotate-180")} />
+              </button>
+
+              <AnimatePresence>
+                {isFilterDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setIsFilterDropdownOpen(false)}></div>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                      className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-45 py-1 overflow-hidden w-full sm:min-w-[175px]"
+                      style={{ transformOrigin: 'top' }}
+                    >
+                      {[
+                        { val: 'all', label: 'Todas as Cobranças' },
+                        { val: 'paid', label: 'Pagas' },
+                        { val: 'pending', label: 'Aguardando' },
+                        { val: 'overdue', label: 'Atrasadas' }
+                      ].map(item => (
+                        <button
+                          key={item.val}
+                          type="button"
+                          onClick={() => {
+                            setFilter(item.val as any);
+                            setIsFilterDropdownOpen(false);
+                          }}
+                          className={cn(
+                            "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
+                            filter === item.val
+                              ? "text-accent font-semibold hover:bg-zinc-900/40"
+                              : "text-zinc-300 hover:bg-zinc-900"
+                          )}
+                        >
+                          <span>{item.label}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </div>
@@ -393,6 +452,104 @@ export function FinanceView() {
       </div>
       
       {/* Modal Nova Transação */}
+      {isContractsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between mb-6 shrink-0">
+              <h2 className="text-xl font-display font-bold">Mensalidades e Planos</h2>
+              <button 
+                onClick={() => setIsContractsModalOpen(false)}
+                className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-auto space-y-4 pr-2">
+              {clientsData.map(c => (
+                <div key={c.id} className="bg-zinc-950/50 border border-zinc-800 rounded-2xl p-4 flex flex-col md:flex-row items-center gap-4">
+                  <div className="flex-1 w-full shrink-0 min-w-44">
+                    <h3 className="font-semibold text-zinc-200">{c.name}</h3>
+                    <p className="text-xs text-zinc-500">{c.domain || c.cnpj || 'Sem info'}</p>
+                    {c.status !== 'active' && <span className="inline-block mt-1 text-[10px] uppercase font-bold text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">Inativo</span>}
+                  </div>
+                  <div className="w-full md:w-auto grid grid-cols-3 gap-3 flex-1">
+                    <div className="relative">
+                      <label className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase mb-1 block">Plano</label>
+                      <button
+                        type="button"
+                        onClick={() => setOpenClientPlanDropdownId(openClientPlanDropdownId === c.id ? null : c.id)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-accent flex items-center justify-between gap-1 select-none cursor-pointer text-left"
+                      >
+                        <span>{c.plan || 'Starter'}</span>
+                        <ChevronDown className={cn("w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 shrink-0", openClientPlanDropdownId === c.id && "rotate-180")} />
+                      </button>
+
+                      <AnimatePresence>
+                        {openClientPlanDropdownId === c.id && (
+                          <>
+                            <div className="fixed inset-0 z-30" onClick={() => setOpenClientPlanDropdownId(null)}></div>
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 10 }}
+                              transition={{ duration: 0.3, ease: 'easeOut' }}
+                              className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[130px]"
+                              style={{ transformOrigin: 'top left' }}
+                            >
+                              {['Starter', 'Pro', 'Enterprise'].map(planName => (
+                                <button
+                                  key={planName}
+                                  type="button"
+                                  onClick={async () => {
+                                    await updateDoc(doc(db, 'clients', c.id), { plan: planName });
+                                    setOpenClientPlanDropdownId(null);
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-4 py-2 text-xs transition-colors flex items-center justify-between cursor-pointer",
+                                    (c.plan || 'Starter') === planName
+                                      ? "text-accent font-semibold hover:bg-zinc-900/40"
+                                      : "text-zinc-300 hover:bg-zinc-900"
+                                  )}
+                                >
+                                  <span>{planName}</span>
+                                </button>
+                              ))}
+                            </motion.div>
+                          </>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase mb-1 block">Valor Mensal</label>
+                      <input 
+                        type="number"
+                        defaultValue={c.monthlyValue || 0}
+                        onBlur={async (e) => await updateDoc(doc(db, 'clients', c.id), { monthlyValue: Number(e.target.value) })}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase mb-1 block">Vencimento (Dia)</label>
+                      <input 
+                        type="number"
+                        min="1" max="31"
+                        defaultValue={c.dueDate || 1}
+                        onBlur={async (e) => await updateDoc(doc(db, 'clients', c.id), { dueDate: Number(e.target.value) })}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-accent"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {clientsData.length === 0 && (
+                <div className="text-center text-zinc-500 py-8">Nenhum cliente cadastrado.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl">
@@ -408,16 +565,54 @@ export function FinanceView() {
             
             <form onSubmit={handleAddTransaction} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 relative">
                   <label className="text-sm font-medium text-zinc-400">Tipo da Transação</label>
-                  <select 
-                    value={formData.type}
-                    onChange={e => setFormData({...formData, type: e.target.value as 'entrada'|'saida'})}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-accent"
+                  <button
+                    type="button"
+                    onClick={() => setIsFormTypeDropdownOpen(!isFormTypeDropdownOpen)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-accent flex items-center justify-between select-none cursor-pointer text-left text-zinc-200"
                   >
-                    <option value="entrada">Entrada (Receita)</option>
-                    <option value="saida">Saída (Despesa)</option>
-                  </select>
+                    <span>{formData.type === 'entrada' ? 'Entrada (Receita)' : 'Saída (Despesa)'}</span>
+                    <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isFormTypeDropdownOpen && "rotate-180")} />
+                  </button>
+
+                  <AnimatePresence>
+                    {isFormTypeDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsFormTypeDropdownOpen(false)}></div>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          transition={{ duration: 0.3, ease: 'easeOut' }}
+                          className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[160px]"
+                          style={{ transformOrigin: 'top left' }}
+                        >
+                          {[
+                            { val: 'entrada', label: 'Entrada (Receita)' },
+                            { val: 'saida', label: 'Saída (Despesa)' }
+                          ].map(item => (
+                            <button
+                              key={item.val}
+                              type="button"
+                              onClick={() => {
+                                setFormData({...formData, type: item.val as any});
+                                setIsFormTypeDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
+                                formData.type === item.val
+                                  ? "text-accent font-semibold hover:bg-zinc-900/40"
+                                  : "text-zinc-300 hover:bg-zinc-900"
+                              )}
+                            >
+                              <span>{item.label}</span>
+                            </button>
+                          ))}
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
                 </div>
                 
                 <div className="space-y-1.5">
@@ -457,44 +652,166 @@ export function FinanceView() {
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-300 outline-none focus:border-accent [color-scheme:dark]"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 relative">
                   <label className="text-sm font-medium text-zinc-400">Status</label>
-                  <select 
-                    value={formData.status}
-                    onChange={e => setFormData({...formData, status: e.target.value as any})}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-accent"
+                  <button
+                    type="button"
+                    onClick={() => setIsFormStatusDropdownOpen(!isFormStatusDropdownOpen)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-accent flex items-center justify-between select-none cursor-pointer text-left text-zinc-200"
                   >
-                    <option value="paid">Pago</option>
-                    <option value="pending">Aguardando</option>
-                    <option value="overdue">Atrasado</option>
-                  </select>
+                    <span>
+                      {formData.status === 'paid' ? 'Pago' :
+                       formData.status === 'pending' ? 'Aguardando' : 'Atrasado'}
+                    </span>
+                    <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isFormStatusDropdownOpen && "rotate-180")} />
+                  </button>
+
+                  <AnimatePresence>
+                    {isFormStatusDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsFormStatusDropdownOpen(false)}></div>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          transition={{ duration: 0.3, ease: 'easeOut' }}
+                          className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[160px]"
+                          style={{ transformOrigin: 'top left' }}
+                        >
+                          {[
+                            { val: 'paid', label: 'Pago' },
+                            { val: 'pending', label: 'Aguardando' },
+                            { val: 'overdue', label: 'Atrasado' }
+                          ].map(item => (
+                            <button
+                              key={item.val}
+                              type="button"
+                              onClick={() => {
+                                setFormData({...formData, status: item.val as any});
+                                setIsFormStatusDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
+                                formData.status === item.val
+                                  ? "text-accent font-semibold hover:bg-zinc-900/40"
+                                  : "text-zinc-300 hover:bg-zinc-900"
+                              )}
+                            >
+                              <span>{item.label}</span>
+                            </button>
+                          ))}
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 relative">
                   <label className="text-sm font-medium text-zinc-400">Método</label>
-                  <select 
-                    value={formData.method}
-                    onChange={e => setFormData({...formData, method: e.target.value as any})}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-accent"
+                  <button
+                    type="button"
+                    onClick={() => setIsFormMethodDropdownOpen(!isFormMethodDropdownOpen)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-accent flex items-center justify-between select-none cursor-pointer text-left text-zinc-200"
                   >
-                    <option value="manual">Dinheiro / Outros</option>
-                    <option value="pix">PIX</option>
-                    <option value="credit_card">Cartão de Crédito</option>
-                    <option value="boleto">Boleto</option>
-                  </select>
+                    <span>
+                      {formData.method === 'manual' ? 'Dinheiro / Outros' :
+                       formData.method === 'pix' ? 'PIX' :
+                       formData.method === 'credit_card' ? 'Cartão de Crédito' : 'Boleto'}
+                    </span>
+                    <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isFormMethodDropdownOpen && "rotate-180")} />
+                  </button>
+
+                  <AnimatePresence>
+                    {isFormMethodDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsFormMethodDropdownOpen(false)}></div>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          transition={{ duration: 0.3, ease: 'easeOut' }}
+                          className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[160px]"
+                          style={{ transformOrigin: 'top left' }}
+                        >
+                          {[
+                            { val: 'manual', label: 'Dinheiro / Outros' },
+                            { val: 'pix', label: 'PIX' },
+                            { val: 'credit_card', label: 'Cartão de Crédito' },
+                            { val: 'boleto', label: 'Boleto' }
+                          ].map(item => (
+                            <button
+                              key={item.val}
+                              type="button"
+                              onClick={() => {
+                                setFormData({...formData, method: item.val as any});
+                                setIsFormMethodDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
+                                formData.method === item.val
+                                  ? "text-accent font-semibold hover:bg-zinc-900/40"
+                                  : "text-zinc-300 hover:bg-zinc-900"
+                              )}
+                            >
+                              <span>{item.label}</span>
+                            </button>
+                          ))}
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
                 </div>
-                <div className="space-y-1.5">
+                
+                <div className="space-y-1.5 relative">
                   <label className="text-sm font-medium text-zinc-400">Gateway</label>
-                  <select 
-                    value={formData.gateway}
-                    onChange={e => setFormData({...formData, gateway: e.target.value as any})}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-accent"
+                  <button
+                    type="button"
+                    onClick={() => setIsFormGatewayDropdownOpen(!isFormGatewayDropdownOpen)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-accent flex items-center justify-between select-none cursor-pointer text-left text-zinc-200"
                   >
-                    <option value="manual">Manual/Local</option>
-                    <option value="asaas">ASAAS</option>
-                  </select>
+                    <span>{formData.gateway === 'manual' ? 'Manual/Local' : 'ASAAS'}</span>
+                    <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isFormGatewayDropdownOpen && "rotate-180")} />
+                  </button>
+
+                  <AnimatePresence>
+                    {isFormGatewayDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsFormGatewayDropdownOpen(false)}></div>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          transition={{ duration: 0.3, ease: 'easeOut' }}
+                          className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[160px]"
+                          style={{ transformOrigin: 'top left' }}
+                        >
+                          {[
+                            { val: 'manual', label: 'Manual/Local' },
+                            { val: 'asaas', label: 'ASAAS' }
+                          ].map(item => (
+                            <button
+                              key={item.val}
+                              type="button"
+                              onClick={() => {
+                                setFormData({...formData, gateway: item.val as any});
+                                setIsFormGatewayDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
+                                formData.gateway === item.val
+                                  ? "text-accent font-semibold hover:bg-zinc-900/40"
+                                  : "text-zinc-300 hover:bg-zinc-900"
+                              )}
+                            >
+                              <span>{item.label}</span>
+                            </button>
+                          ))}
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 

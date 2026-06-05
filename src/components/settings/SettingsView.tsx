@@ -1,13 +1,85 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, ChangeEvent } from 'react';
 import { 
   Settings2, Key, Shield, Database, Cloud, 
   ArrowRight, Lock, Server, FileJson, CheckCircle2,
-  AlertTriangle, Activity, FileText, Bell, HardDrive
+  AlertTriangle, Activity, FileText, Bell, HardDrive,
+  Image as ImageIcon, Upload, Link as LinkIcon, Loader2,
+  Rocket, Hand, Power, Code, Clock, Info
 } from 'lucide-react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../lib/firebase';
 import { cn } from '../../utils';
+import { useNotification } from '../NotificationContext';
 
 export function SettingsView() {
+  const { showSuccess, showInfo, showWarn, showError, showSecondary, showContrast } = useNotification();
   const [activeTab, setActiveTab] = useState<'geral' | 'integracao'>('integracao');
+  const [heroImage, setHeroImage] = useState<string>('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const docRef = doc(db, 'settings', 'global');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.heroImage) setHeroImage(data.heroImage);
+        }
+      } catch (error) {
+        console.error("Error loading settings", error);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  const handleSaveSettings = async () => {
+    setIsSaving(true);
+    try {
+      const docRef = doc(db, 'settings', 'global');
+      await setDoc(docRef, { heroImage }, { merge: true });
+      showSuccess("Configurações salvas", "As preferências globais foram persistidas com sucesso.");
+    } catch (error) {
+      console.error("Error saving settings", error);
+      showError("Falha de gravação", "Não foi possível gravar as novas configurações.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const storageRef = ref(storage, `settings/hero_${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {},
+        (error) => {
+          console.error("Upload error", error);
+          showError("Falha de Upload", "Ocorreu um erro ao carregar a imagem selecionada.");
+          setIsUploading(false);
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          setHeroImage(downloadURL);
+          showSuccess("Upload Concluído", "A nova imagem do header foi carregada com sucesso.");
+          setIsUploading(false);
+        }
+      );
+    } catch (error) {
+      console.error("Error uploading file", error);
+      showError("Falha de Upload", "Ocorreu um erro ao inicializar o upload.");
+      setIsUploading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full space-y-6">
@@ -200,10 +272,134 @@ export function SettingsView() {
           )}
 
           {activeTab === 'geral' && (
-            <div className="h-full flex flex-col items-center justify-center text-center py-20">
-              <Settings2 className="w-12 h-12 text-zinc-700 mb-4" />
-              <h3 className="font-display text-xl font-bold text-zinc-300">Configurações Gerais</h3>
-              <p className="text-zinc-500 mt-2 max-w-sm">Este painel será habitado por opções de tema, preferências globais e personalização de faturamento.</p>
+            <div className="space-y-8 max-w-2xl">
+              <div>
+                <h3 className="font-display text-2xl font-bold mb-2 text-zinc-100">Configurações Gerais</h3>
+                <p className="text-zinc-400 text-sm">Personalize a aparência e funcionamento padrão da sua vitrine de serviços.</p>
+              </div>
+
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
+                <h4 className="flex items-center gap-2 font-bold text-zinc-200 mb-4">
+                  <ImageIcon className="w-5 h-5 text-accent" />
+                  Imagem do Header (Landing Page)
+                </h4>
+                
+                <div className="space-y-4">
+                  {heroImage && (
+                    <div className="relative w-full h-48 rounded-xl overflow-hidden mb-6 border border-zinc-800">
+                      <img src={heroImage} alt="Hero Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="flex-1 flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 py-3 px-4 rounded-xl text-sm font-medium transition-colors"
+                    >
+                      {isUploading ? <Loader2 className="w-4 h-4 animate-spin text-accent" /> : <Upload className="w-4 h-4" />}
+                      {isUploading ? 'Enviando...' : 'Fazer Upload'}
+                    </button>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      ref={fileInputRef} 
+                      onChange={handleFileUpload} 
+                    />
+                  </div>
+                  
+                  <div className="flex items-center gap-4 py-2">
+                    <div className="flex-1 h-px bg-zinc-800"></div>
+                    <span className="text-xs text-zinc-500 uppercase tracking-widest font-semibold">OU LINK DIRETO</span>
+                    <div className="flex-1 h-px bg-zinc-800"></div>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
+                    <LinkIcon className="w-4 h-4 text-zinc-500" />
+                    <input 
+                      type="url"
+                      placeholder="https://exemplo.com/imagem.jpg"
+                      value={heroImage}
+                      onChange={(e) => setHeroImage(e.target.value)}
+                      className="bg-transparent border-none text-white text-sm w-full focus:outline-none placeholder:text-zinc-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-8 flex justify-end">
+                  <button 
+                    onClick={handleSaveSettings}
+                    disabled={isSaving}
+                    className="bg-accent hover:bg-[#86e029] text-zinc-950 font-bold px-6 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-2"
+                  >
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings2 className="w-4 h-4" />}
+                    Salvar Configurações
+                  </button>
+                </div>
+              </div>
+
+              {/* ToastSeverityDemo - Notification Model Playground */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
+                <h4 className="flex items-center gap-2.5 font-bold text-zinc-200 mb-2">
+                  <Bell className="w-5 h-5 text-accent" />
+                  Modelo de Notificação (ToastSeverityDemo)
+                </h4>
+                <p className="text-zinc-400 text-xs mb-6">
+                  Protótipo interativo do sistema de toasts configurado sob demanda na AnimaSystem. Teste as variantes decoradas com a paleta institucional (verde, branco, cinza e preto).
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <button
+                    onClick={() => showSuccess('Sucesso', 'Operação realizada com absoluto sucesso!')}
+                    className="flex items-center justify-center gap-2 bg-accent/10 hover:bg-accent/20 border border-accent/20 text-accent font-semibold py-3 px-4 rounded-xl text-xs transition-all cursor-pointer"
+                  >
+                    <Rocket className="w-4 h-4 shrink-0" />
+                    Success
+                  </button>
+
+                  <button
+                    onClick={() => showInfo('Mensagem Informativa', 'Esta é uma notificação do tipo informativa.')}
+                    className="flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 font-semibold py-3 px-4 rounded-xl text-xs transition-all cursor-pointer"
+                  >
+                    <Clock className="w-4 h-4 shrink-0" />
+                    Info
+                  </button>
+
+                  <button
+                    onClick={() => showWarn('Atenção', 'Verifique com cautela esta ação pendente.')}
+                    className="flex items-center justify-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 font-semibold py-3 px-4 rounded-xl text-xs transition-all cursor-pointer"
+                  >
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    Warn
+                  </button>
+
+                  <button
+                    onClick={() => showError('Falha de Sistema', 'Houve um erro crítico na comunicação do Firebase.')}
+                    className="flex items-center justify-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 font-semibold py-3 px-4 rounded-xl text-xs transition-all cursor-pointer"
+                  >
+                    <Power className="w-4 h-4 shrink-0" />
+                    Error
+                  </button>
+
+                  <button
+                    onClick={() => showSecondary('Secundário', 'Log secundário processado em background.')}
+                    className="flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold py-3 px-4 rounded-xl text-xs transition-all cursor-pointer"
+                  >
+                    <Code className="w-4 h-4 shrink-0" />
+                    Secondary
+                  </button>
+
+                  <button
+                    onClick={() => showContrast('Contraste Máximo', 'Notificação de alto impacto visual.')}
+                    className="flex items-center justify-center gap-2 bg-white hover:bg-zinc-100 text-zinc-950 font-bold py-3 px-4 rounded-xl text-xs transition-all cursor-pointer"
+                  >
+                    <Hand className="w-4 h-4 shrink-0" />
+                    Contrast
+                  </button>
+                </div>
+              </div>
+
             </div>
           )}
 

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { NotificationProvider } from './components/NotificationContext';
+import { cn } from './utils';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { KPICard } from './components/KPICard';
@@ -12,7 +14,9 @@ import { FinanceView } from './components/finance/FinanceView';
 import { TicketsView } from './components/tickets/TicketsView';
 import { AuditView } from './components/audit/AuditView';
 import { SettingsView } from './components/settings/SettingsView';
+import { LeadsView } from './components/leads/LeadsView';
 import { LandingPage } from './components/landing/LandingPage';
+import { PortfolioPage } from './components/portfolio/PortfolioPage';
 import { 
   DollarSign, 
   Wallet, 
@@ -151,6 +155,8 @@ function DashboardHome() {
 
 function MainLayout({ currentView, children, onNavigate }: { currentView: ViewType, children: React.ReactNode, onNavigate: (view: ViewType, id?: string) => void }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -174,13 +180,13 @@ function MainLayout({ currentView, children, onNavigate }: { currentView: ViewTy
 
   if (user === null) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl max-w-md w-full text-center">
-          <h2 className="text-2xl font-display font-bold text-zinc-100 mb-4">Acesso Restrito</h2>
-          <p className="text-zinc-400 mb-8">Faça login com sua conta do Google para acessar a AnimaSystem Master.</p>
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
+        <div className="bg-zinc-900 border border-zinc-800 p-6 sm:p-8 rounded-2xl max-w-md w-full text-center">
+          <h2 className="text-xl sm:text-2xl font-display font-bold text-zinc-100 mb-4">Acesso Restrito</h2>
+          <p className="text-zinc-400 text-sm mb-8">Faça login com sua conta do Google para acessar a AnimaSystem Master.</p>
           <button 
             onClick={handleLogin}
-            className="bg-accent text-zinc-950 font-semibold px-6 py-3 rounded-full hover:bg-accent-hover transition-colors w-full"
+            className="bg-accent text-zinc-950 font-semibold px-6 py-3 rounded-full hover:bg-accent-hover transition-colors w-full cursor-pointer"
           >
             Entrar com Google
           </button>
@@ -190,13 +196,30 @@ function MainLayout({ currentView, children, onNavigate }: { currentView: ViewTy
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100 font-sans">
-      <Sidebar currentView={currentView} onViewChange={(v) => onNavigate(v)} />
+    <div className="flex min-h-screen bg-zinc-950 text-zinc-100 font-sans relative overflow-x-hidden">
+      <Sidebar 
+        currentView={currentView} 
+        onViewChange={(v) => {
+          onNavigate(v);
+          setMobileSidebarOpen(false);
+        }} 
+        isCollapsed={isCollapsed}
+        onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
       
-      <main className="flex-1 ml-64 flex flex-col min-h-screen">
-        <Header currentView={currentView} onNavigate={onNavigate} />
+      <main className={cn(
+        "flex-1 flex flex-col min-h-screen transition-all duration-300 w-full overflow-hidden ml-0 mr-0",
+        isCollapsed ? "md:ml-20" : "md:ml-64"
+      )}>
+        <Header 
+          currentView={currentView} 
+          onNavigate={onNavigate} 
+          onToggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)} 
+        />
         
-        <div className="flex-1 p-8 overflow-auto flex flex-col">
+        <div className="flex-1 p-4 sm:p-8 overflow-auto flex flex-col custom-scrollbar">
           {/* Main Content Area */}
           <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col">
             {children}
@@ -222,13 +245,15 @@ function AppRoutes() {
   const handleNavigate = (v: ViewType, id?: string) => {
     if (v === 'dashboard') navigate('/home');
     else if (v === 'client-detail' && id) navigate(`/clientes/${id}`);
-    else navigate(`/${v === 'settings' ? 'configuracoes' : v === 'monitor' ? 'monitoramento' : v === 'audit' ? 'auditoria' : v === 'tickets' ? 'tickets' : v === 'finance' ? 'financeiro' : v === 'clients' ? 'clientes' : v}`);
+    else navigate(`/${v === 'settings' ? 'configuracoes' : v === 'monitor' ? 'monitoramento' : v === 'audit' ? 'auditoria' : v === 'tickets' ? 'tickets' : v === 'finance' ? 'financeiro' : v === 'clients' ? 'clientes' : v === 'leads' ? 'leads' : v}`);
   };
 
   return (
     <Routes>
       <Route path="/" element={<LandingPage onEnter={() => navigate('/home')} />} />
+      <Route path="/portfolio" element={<PortfolioPage />} />
       <Route path="/home" element={<MainLayout currentView="dashboard" onNavigate={handleNavigate}><DashboardHome /></MainLayout>} />
+      <Route path="/leads" element={<MainLayout currentView="leads" onNavigate={handleNavigate}><LeadsView /></MainLayout>} />
       <Route path="/clientes" element={<MainLayout currentView="clients" onNavigate={handleNavigate}><ClientsView onClientSelect={handleNavigateToClientDetail} /></MainLayout>} />
       <Route path="/clientes/:clientId" element={<MainLayout currentView="client-detail" onNavigate={handleNavigate}><ClientDetailRoute onBack={handleBackToClients} /></MainLayout>} />
       <Route path="/financeiro" element={<MainLayout currentView="finance" onNavigate={handleNavigate}><FinanceView /></MainLayout>} />
@@ -251,7 +276,9 @@ function ClientDetailRoute({ onBack }: { onBack: () => void }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <NotificationProvider>
+        <AppRoutes />
+      </NotificationProvider>
     </BrowserRouter>
   );
 }

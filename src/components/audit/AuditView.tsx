@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { 
   Search, Filter, Calendar, Download, ShieldCheck, 
   LogIn, Edit3, Upload, Trash2, AlertOctagon, Link2,
-  ChevronRight, Database
+  ChevronRight, Database, ChevronDown
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../utils';
 
 type EventType = 'login' | 'change' | 'upload' | 'delete' | 'error' | 'integration';
@@ -31,6 +32,7 @@ const mockLogs: AuditLog[] = [
 
 export function AuditView() {
   const [filterType, setFilterType] = useState<string>('all');
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
   const [search, setSearch] = useState('');
 
   const getTypeInfo = (type: EventType) => {
@@ -75,7 +77,7 @@ export function AuditView() {
         </button>
       </div>
 
-      <div className="flex-1 bg-zinc-900 border border-zinc-800/50 rounded-[2rem] flex flex-col overflow-hidden">
+      <div className="flex-1 bg-zinc-900 border border-zinc-800/50 rounded-[2rem] flex flex-col relative">
         
         {/* Filters */}
         <div className="p-6 border-b border-zinc-800/50 flex flex-wrap gap-4 items-center justify-between bg-zinc-950/20">
@@ -92,20 +94,64 @@ export function AuditView() {
             </div>
 
             <div className="relative">
-              <select 
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="appearance-none bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2 pl-4 pr-10 outline-none focus:border-accent/50 transition-all"
+              <button
+                type="button"
+                onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
+                className="flex items-center justify-between gap-2.5 bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2.5 pl-5 pr-8 outline-none focus:border-accent/50 transition-all select-none cursor-pointer min-w-[160px]"
               >
-                <option value="all">Tipos de Evento</option>
-                <option value="login">Autenticação</option>
-                <option value="change">Alterações</option>
-                <option value="upload">Uploads</option>
-                <option value="delete">Exclusões</option>
-                <option value="error">Erros</option>
-                <option value="integration">Integrações</option>
-              </select>
-              <Filter className="w-4 h-4 text-zinc-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <span>
+                  {filterType === 'all' ? 'Tipos de Evento' :
+                   filterType === 'login' ? 'Autenticação' :
+                   filterType === 'change' ? 'Alterações' :
+                   filterType === 'upload' ? 'Uploads' :
+                   filterType === 'delete' ? 'Exclusões' :
+                   filterType === 'error' ? 'Erros' : 'Integrações'}
+                </span>
+                <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0 absolute right-3.5 top-1/2 -translate-y-1/2", isTypeDropdownOpen && "rotate-180")} />
+              </button>
+
+              <AnimatePresence>
+                {isTypeDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setIsTypeDropdownOpen(false)}></div>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                      className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[180px] p-anchored-overlay-enter-active"
+                      style={{ transformOrigin: 'top' }}
+                    >
+                      {[
+                        { val: 'all', label: 'Tipos de Evento' },
+                        { val: 'login', label: 'Autenticação' },
+                        { val: 'change', label: 'Alterações' },
+                        { val: 'upload', label: 'Uploads' },
+                        { val: 'delete', label: 'Exclusões' },
+                        { val: 'error', label: 'Erros' },
+                        { val: 'integration', label: 'Integrações' }
+                      ].map(item => (
+                        <button
+                          key={item.val}
+                          type="button"
+                          onClick={() => {
+                            setFilterType(item.val);
+                            setIsTypeDropdownOpen(false);
+                          }}
+                          className={cn(
+                            "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
+                            filterType === item.val
+                              ? "text-accent font-semibold hover:bg-zinc-900/40"
+                              : "text-zinc-300 hover:bg-zinc-900"
+                          )}
+                        >
+                          <span>{item.label}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
 
             <button className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2 px-4 hover:border-zinc-700 transition-all">

@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Upload, Loader2, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { ClientData } from '../../types';
+import { ref, uploadBytesResumable, getDownloadURL, getStorage, deleteObject } from 'firebase/storage';
+import { app, db } from '../../lib/firebase';
 
 interface ClientModalProps {
   client: ClientData | null;
@@ -23,6 +25,8 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
     dueDate: 5,
     status: 'active'
   });
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (client) setFormData(client);
@@ -85,6 +89,63 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
     onSave(formData as ClientData);
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const hubStorage = getStorage(app, 'gs://animahub.firebasestorage.app');
+      const storageRef = ref(hubStorage, `clientes/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          null,
+          (error) => reject(error),
+          () => resolve()
+        );
+      });
+
+      const url = await getDownloadURL(storageRef);
+      setFormData(prev => ({ ...prev, logoUrl: url }));
+    } catch (err: any) {
+      console.error('Failed to upload logo', err);
+      alert(`Erro ao fazer upload da imagem: ${err.message}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!formData.logoUrl) return;
+    
+    if (confirm('Deseja realmente remover a logo?')) {
+      try {
+        setUploading(true);
+        const hubStorage = getStorage(app, 'gs://animahub.firebasestorage.app');
+        const fileRef = ref(hubStorage, formData.logoUrl);
+        await deleteObject(fileRef).catch(e => console.error("Logo delete error:", e));
+        
+        setFormData(prev => ({ ...prev, logoUrl: '' }));
+        
+        // Immediately save to Firestore to keep it in sync since we deleted from Storage
+        if (client?.id) {
+          const { doc, updateDoc } = await import('firebase/firestore');
+          await updateDoc(doc(db, 'clients', client.id), {
+            logoUrl: ''
+          });
+        }
+      } catch (err) {
+        console.error('Failed to remove logo', err);
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div 
@@ -105,151 +166,217 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
           </button>
         </div>
 
-        <div className="p-6 overflow-auto">
+        <div className="p-6 overflow-auto custom-scrollbar">
           <form id="client-form" onSubmit={handleSubmit} className="space-y-6">
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-400">Nome da Empresa *</label>
-                <input 
-                  required
-                  name="name"
-                  value={formData.name || ''}
-                  onChange={handleChange}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
-                  placeholder="Ex: TechFlow Solutions"
-                />
+            <div className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-zinc-200">Informações da Empresa</h3>
+              
+              {/* Logo Upload Section */}
+              <div className="flex items-center gap-4 bg-zinc-900/50 p-4 rounded-xl border border-zinc-800/50">
+                <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center shrink-0 border border-zinc-700/50 overflow-hidden">
+                  {formData.logoUrl ? (
+                    <img src={formData.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
+                  ) : formData.logoInitials ? (
+                    <span className="text-zinc-400 font-bold text-xl">{formData.logoInitials}</span>
+                  ) : (
+                    <ImageIcon className="w-6 h-6 text-zinc-500" />
+                  )}
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-zinc-200 mb-1">Logo do Cliente</h4>
+                  <p className="text-xs text-zinc-500 mb-3">Recomendado: 256x256px, formato PNG ou JPG.</p>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    accept="image/*"
+                    onChange={handleFileChange}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="flex items-center gap-2 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors border border-zinc-700/50 disabled:opacity-50"
+                    >
+                      {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      {uploading ? 'Enviando...' : (formData.logoUrl ? 'Alterar Logo' : 'Fazer Upload')}
+                    </button>
+                    {formData.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        disabled={uploading}
+                        className="flex items-center gap-2 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg transition-colors border border-red-500/20 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Remover
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-400">Responsável *</label>
-                <input 
-                  required
-                  name="responsible"
-                  value={formData.responsible || ''}
-                  onChange={handleChange}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
-                  placeholder="Nome do contato principal"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-400">Domínio *</label>
-                <input 
-                  required
-                  name="domain"
-                  value={formData.domain || ''}
-                  onChange={handleChange}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
-                  placeholder="exemplo.com.br"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">Nome da Empresa *</label>
+                  <input 
+                    required
+                    name="name"
+                    value={formData.name || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    placeholder="Ex: TechFlow Solutions"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">CNPJ</label>
+                  <input 
+                    name="cnpj"
+                    value={formData.cnpj || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    placeholder="00.000.000/0000-00"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">Site da Empresa</label>
+                  <input 
+                    name="website"
+                    value={formData.website || formData.domain || ''}
+                    onChange={(e) => {
+                       handleChange(e);
+                       setFormData(prev => ({ ...prev, domain: e.target.value }));
+                    }}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    placeholder="www.exemplo.com.br"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">Data de Contratação</label>
+                  <input 
+                    type="date"
+                    name="hireDate"
+                    value={formData.hireDate || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">Data de Encerramento</label>
+                  <input 
+                    type="date"
+                    name="endDate"
+                    value={formData.endDate || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                  />
+                </div>
               </div>
             </div>
 
             <hr className="border-zinc-800" />
 
             <div className="space-y-4">
-              <h3 className="font-display font-semibold text-lg text-zinc-200">Integração Firebase</h3>
-              <p className="text-sm text-zinc-400">Configure as credenciais e o projeto do Firebase deste cliente. Ao colar a configuração (JSON ou export const firebaseConfig = {"{...}"}), isso permitirá que você acesse o banco de dados do cliente diretamente da Master. Lembre-se de rodar <code className="bg-zinc-800 px-1 py-0.5 rounded text-accent">npm install firebase</code> no projeto cliente.</p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <h3 className="font-display font-semibold text-lg text-zinc-200">Informações do Responsável</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Nome do Projeto</label>
-                  <input 
-                    name="projectName"
-                    value={formData.projectName || ''}
-                    onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
-                    placeholder="Ex: App Cliente"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">ID do Projeto *</label>
+                  <label className="text-sm font-medium text-zinc-400">Nome do Responsável *</label>
                   <input 
                     required
-                    name="firebaseProjectId"
-                    value={formData.firebaseProjectId || ''}
+                    name="responsible"
+                    value={formData.responsible || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all font-mono"
-                    placeholder="meu-projeto-1234"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    placeholder="Nome do contato principal"
                   />
                 </div>
-
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Nome do Banco de Dados</label>
+                  <label className="text-sm font-medium text-zinc-400">CPF</label>
                   <input 
-                    name="firebaseDatabaseName"
-                    value={formData.firebaseDatabaseName || ''}
+                    name="cpf"
+                    value={formData.cpf || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all font-mono"
-                    placeholder="(default)"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    placeholder="000.000.000-00"
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-400">Configurações do SDK (JSON ou JS)</label>
-                <textarea 
-                  name="firebaseSdkConfig"
-                  value={formData.firebaseSdkConfig || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, firebaseSdkConfig: e.target.value }))}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 outline-none focus:border-accent/50 text-sm transition-all font-mono h-32 resize-none"
-                  placeholder="Cole aqui a configuração do SDK gerada no Firebase console..."
-                />
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">Telefone</label>
+                  <input 
+                    name="phone"
+                    value={formData.phone || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
               </div>
             </div>
 
             <hr className="border-zinc-800" />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-400">Plano</label>
-                <select 
-                  name="plan"
-                  value={formData.plan || 'Starter'}
-                  onChange={handleChange}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all appearance-none"
-                >
-                  <option value="Starter">Starter</option>
-                  <option value="Pro">Pro</option>
-                  <option value="Enterprise">Enterprise</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-400">Mensalidade (R$)</label>
-                <input 
-                  type="number"
-                  name="monthlyValue"
-                  value={formData.monthlyValue || ''}
-                  onChange={handleChange}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-400">Dia de Vencimento</label>
-                <input 
-                  type="number"
-                  name="dueDate"
-                  value={formData.dueDate || ''}
-                  onChange={handleChange}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
-                  min="1"
-                  max="31"
-                />
+            <div className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-zinc-200">Endereço</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">CEP</label>
+                  <input 
+                    name="cep"
+                    value={formData.cep || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    placeholder="00000-000"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-medium text-zinc-400">Rua</label>
+                  <input 
+                    name="street"
+                    value={formData.street || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">Número</label>
+                  <input 
+                    name="number"
+                    value={formData.number || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">Bairro</label>
+                  <input 
+                    name="neighborhood"
+                    value={formData.neighborhood || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">Complemento</label>
+                  <input 
+                    name="complement"
+                    value={formData.complement || ''}
+                    onChange={handleChange}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                  />
+                </div>
               </div>
             </div>
+
+            <hr className="border-zinc-800" />
 
             {client && (
               <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4 flex gap-4 mt-6">
                  <div className="space-y-1">
-                   <h4 className="text-sm font-medium text-orange-400">Atenção ao alterar o Project ID</h4>
+                   <h4 className="text-sm font-medium text-orange-400">Dados do Cliente Atualizados</h4>
                    <p className="text-xs text-orange-300/80">
-                     A modificação do Firebase Project ID deve ser coordenada com o provisionamento no backend para não causar lentidão ou perda de conexão no dashboard do cliente.
+                     Lembre-se: As configurações de Firebase (Banco de Dados) foram movidas para a aba Monitoramento e os dados financeiros para a aba Financeiro.
                    </p>
                  </div>
               </div>
