@@ -11,6 +11,51 @@ import { auth, db } from '../../lib/firebase';
 import { ClientData } from '../../types';
 import { initializeApp, getApps } from 'firebase/app';
 
+const formatRelativeTime = (dateString?: string): string => {
+  if (!dateString) return 'Agora';
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Agora';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    
+    // If the difference is negative or extremely small, treat as "Agora"
+    if (diffMs < 30000) {
+      return 'Agora';
+    }
+    
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    if (diffMins < 1) {
+      return 'Agora';
+    }
+    if (diffMins < 60) {
+      return diffMins === 1 ? 'Há 1 minuto' : `Há ${diffMins} minutos`;
+    }
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) {
+      return diffHours === 1 ? 'Há 1 hora' : `Há ${diffHours} horas`;
+    }
+    
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 30) {
+      return diffDays === 1 ? 'Há 1 dia' : `Há ${diffDays} dias`;
+    }
+    
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) {
+      return diffMonths === 1 ? 'Há 1 mês' : `Há ${diffMonths} meses`;
+    }
+    
+    const diffYears = Math.floor(diffMonths / 12);
+    return diffYears === 1 ? 'Há 1 ano' : `Há ${diffYears} anos`;
+  } catch (e) {
+    return 'Agora';
+  }
+};
+
 type ServiceStatus = 'online' | 'warning' | 'critical';
 
 export function MonitorView() {
@@ -318,7 +363,7 @@ export function MonitorView() {
     <div className="flex flex-col h-full space-y-6">
       
       {/* NOC Header */}
-      <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-4 sm:p-6 lg:p-8 flex flex-col xl:flex-row gap-6 items-stretch xl:items-center justify-between relative overflow-hidden">
+      <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-4 sm:p-6 lg:p-8 flex flex-col xl:flex-row gap-6 items-stretch xl:items-center justify-between relative">
         <div className="absolute top-0 left-6 right-6 h-[2px] bg-gradient-to-r from-emerald-400 via-accent to-emerald-400 rounded-b"></div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:gap-5">
           <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center relative shrink-0 self-center">
@@ -499,20 +544,18 @@ export function MonitorView() {
         {/* Card 2: Última Checagem */}
         <div className="bg-[#101112] border border-zinc-800/50 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
           <span className="text-zinc-500 text-xs font-medium mb-1.5 block">Última checagem</span>
-          <div className="flex items-center gap-2 text-zinc-100 font-bold text-sm sm:text-base">
+          <div className="flex items-center gap-2 text-zinc-100 font-bold text-sm sm:text-base" title={selectedClient?.lastMetricsUpdate ? new Date(selectedClient.lastMetricsUpdate).toLocaleString('pt-BR') : undefined}>
             <Clock className="w-4 h-4 text-zinc-400 shrink-0" />
-            {selectedClient?.lastMetricsUpdate ? (
-              new Date(selectedClient.lastMetricsUpdate).toLocaleString('pt-BR')
-            ) : (
-              'Agora'
-            )}
+            <span>
+              {selectedClient?.lastMetricsUpdate ? formatRelativeTime(selectedClient.lastMetricsUpdate) : 'Agora'}
+            </span>
           </div>
         </div>
 
         {/* Card 3: Plano Contratado */}
         <div className="bg-[#101112] border border-zinc-800/50 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
           <span className="text-zinc-500 text-xs font-medium mb-1.5 block">Plano Contratado</span>
-          <div className="flex items-center gap-2 text-[#97fb2e] font-extrabold text-lg sm:text-xl">
+          <div className="flex items-center gap-2 text-white font-extrabold text-lg sm:text-xl">
             <Zap className="w-4 h-4 text-[#97fb2e] shrink-0" />
             <span className="truncate">{selectedClient?.plan || 'Starter'}</span>
           </div>

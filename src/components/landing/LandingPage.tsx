@@ -21,6 +21,38 @@ export function LandingPage({ onEnter }: LandingPageProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+
+  const [hoveredNetworkNode, setHoveredNetworkNode] = useState<{
+    id: number;
+    name: string;
+    desc: string;
+    status: string;
+    cpu: string;
+    latency: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const networkNodes = [
+    { id: 1, name: 'Marcenaria Sheiffer', desc: 'Monitoramento NOC Ativo', status: 'Online', cpu: '1.4%', latency: '4ms', x: 300, y: 60 },
+    { id: 2, name: 'E-commerce Premium', desc: 'Prevenção de Gargalos de Venda', status: 'Seguro', cpu: '3.1%', latency: '8ms', x: 470, y: 130 },
+    { id: 3, name: 'Portal Institucional', desc: 'Redundância Dinâmica Web', status: 'Excelente', cpu: '0.9%', latency: '3ms', x: 540, y: 300 },
+    { id: 4, name: 'CRM Central Integrado', desc: 'Banco de Dados Replicado', status: 'Protegido', cpu: '4.8%', latency: '11ms', x: 470, y: 470 },
+    { id: 5, name: 'Checkout Expresso', desc: 'Cluster Isolado e Seguro', status: 'Online', cpu: '2.2%', latency: '5ms', x: 300, y: 540 },
+    { id: 6, name: 'Módulo de Pagamentos', desc: 'Gateway Criptografado GCP', status: 'Impenetrável', cpu: '0.7%', latency: '6ms', x: 130, y: 470 },
+    { id: 7, name: 'Agência Digital Sol', desc: 'Auto-Scaling de Cache Ativo', status: 'Excelente', cpu: '1.1%', latency: '2ms', x: 60, y: 300 },
+    { id: 8, name: 'Gestor de Relatórios', desc: 'SLA de Disponibilidade 99.9%', status: 'Online', cpu: '3.9%', latency: '10ms', x: 130, y: 130 },
+  ];
+
+  const getCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const cx = mx - dy * 0.12;
+    const cy = my + dx * 0.12;
+    return `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
+  };
   
   // Form state
   const [formData, setFormData] = useState({
@@ -380,69 +412,288 @@ export function LandingPage({ onEnter }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Partnerships Section */}
-      <section className="bg-[#0a1007] relative z-10 py-24 pb-32 border-b border-zinc-800/30">
+      {/* Partnerships / Core Network Section */}
+      <section className="bg-[#070b05] relative z-10 py-24 pb-32 border-b border-zinc-900">
         <div className="max-w-7xl mx-auto px-6">
-           <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-12 lg:gap-24">
-              <motion.div
-                initial={{ opacity: 0, x: -24 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-              >
-                 <span className="text-[#97fb2e] text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-[#97fb2e] rounded-full"></div> PARCERIAS
-                 </span>
-              </motion.div>
+           <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-center">
               
-              <div className="space-y-12 max-w-4xl">
-                 <motion.h2 
-                   initial={{ opacity: 0, y: 30 }}
-                   whileInView={{ opacity: 1, y: 0 }}
+              {/* Left Column: Text and Specs */}
+              <div className="lg:col-span-5 space-y-8">
+                 <motion.div
+                   initial={{ opacity: 0, x: -24 }}
+                   whileInView={{ opacity: 1, x: 0 }}
                    viewport={{ once: true, margin: "-100px" }}
-                   transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
-                   className="font-sans text-4xl md:text-5xl lg:text-[56px] text-[#97fb2e] leading-[1.1] font-medium"
+                   transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
                  >
-                    Mais de uma década ajudando empresas iniciais e marcas a crescerem.
-                 </motion.h2>
-                 <motion.p 
-                   initial={{ opacity: 0, y: 30 }}
-                   whileInView={{ opacity: 1, y: 0 }}
-                   viewport={{ once: true, margin: "-100px" }}
-                   transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
-                   className="text-white/60 text-lg md:text-xl leading-relaxed font-light max-w-3xl"
-                 >
-                    Da validação da ideia ao crescimento avançado, combinamos visão estratégica e as ferramentas digitais mais modernas para ajudar seu negócio a tomar decisões mais inteligentes e a escalar rapidamente em um mercado dinâmico.
-                 </motion.p>
+                    <span className="text-[#97fb2e] text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+                       <span className="w-2 h-2 rounded-full bg-[#97fb2e] animate-pulse"></span> NÚCLEO GOOGLE CLOUD
+                    </span>
+                 </motion.div>
 
-                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-12 pt-8">
-                    <motion.div
-                      initial={{ opacity: 0, y: 40 }}
+                 <div className="space-y-6">
+                    <motion.h2 
+                      initial={{ opacity: 0, y: 30 }}
                       whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true, margin: "-50px" }}
-                      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.3 }}
+                      viewport={{ once: true, margin: "-100px" }}
+                      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+                      className="font-sans text-3xl md:text-4xl lg:text-[46px] leading-[1.15] font-semibold text-zinc-100"
                     >
-                      <div className="text-5xl text-[#97fb2e] font-light mb-3">95%</div>
-                      <div className="text-white/50 text-sm font-medium">Satisfação total de clientes</div>
-                    </motion.div>
-                    <motion.div
-                      initial={{ opacity: 0, y: 40 }}
+                      Estrutura blindada e redundante via <span className="text-[#97fb2e]">Google Cloud</span>.
+                    </motion.h2>
+                    <motion.p 
+                      initial={{ opacity: 0, y: 30 }}
                       whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true, margin: "-50px" }}
-                      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.4 }}
+                      viewport={{ once: true, margin: "-100px" }}
+                      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+                      className="text-zinc-400 text-base md:text-lg leading-relaxed font-light"
                     >
-                      <div className="text-5xl text-[#97fb2e] font-light mb-3">20+</div>
-                      <div className="text-white/50 text-sm font-medium">Projetos de inovação entregues</div>
-                    </motion.div>
-                    <motion.div
-                      initial={{ opacity: 0, y: 40 }}
+                      Cada cliente corporativo opera conectado ao <strong className="text-zinc-200 font-semibold text-[#97fb2e]">Anima System</strong>, nosso núcleo central de orquestração. Hospedado em múltiplos clusters seguros do Google Cloud, eliminamos completamente riscos de quedas de site, oscilações no checkout e lentidões inesperadas.
+                    </motion.p>
+                 </div>
+
+                 {/* Infrastructure Pillars */}
+                 <div className="space-y-4 pt-4 border-t border-zinc-800/60">
+                    <motion.div 
+                      className="flex items-start gap-3"
+                      initial={{ opacity: 0, y: 20 }}
                       whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true, margin: "-50px" }}
-                      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.5 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: 0.3 }}
                     >
-                      <div className="text-5xl text-[#97fb2e] font-light mb-3">$5M+</div>
-                      <div className="text-white/50 text-sm font-medium">Gerados com nossas estratégias</div>
+                      <div className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-[#97fb2e] mt-1 shrink-0 font-bold">1</div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-zinc-200">Segurança de Nível Bancário</h4>
+                        <p className="text-xs text-zinc-500 mt-0.5 font-light">Proteção ativa contra ataques DDoS, criptografia de tráfego SSL/TLS e isolamento absoluto de dados.</p>
+                      </div>
                     </motion.div>
+
+                    <motion.div 
+                      className="flex items-start gap-3"
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: 0.4 }}
+                    >
+                      <div className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-[#97fb2e] mt-1 shrink-0 font-bold">2</div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-zinc-200">Auto-Scaling Inteligente (Sem Travamentos)</h4>
+                        <p className="text-xs text-zinc-500 mt-0.5 font-light">Sua infraestrutura se expande automaticamente em milissegundos para aguentar picos de tráfego ou campanhas virais.</p>
+                      </div>
+                    </motion.div>
+
+                    <motion.div 
+                      className="flex items-start gap-3"
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: 0.5 }}
+                    >
+                      <div className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-[#97fb2e] mt-1 shrink-0 font-bold">3</div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-zinc-200">Redundância Crítica Multi-Região</h4>
+                        <p className="text-xs text-zinc-500 mt-0.5 font-light">Se algum hardware global apresentar instabilidade, outro assume instantaneamente sem que ninguém perceba.</p>
+                      </div>
+                    </motion.div>
+                 </div>
+              </div>
+
+              {/* Right Column: Visual Core Network */}
+              <div className="lg:col-span-7 flex flex-col items-center space-y-6">
+                 <motion.div 
+                   className="w-full max-w-[580px] sm:max-w-[620px] aspect-square bg-[#0b1007]/90 border border-zinc-800/80 rounded-[2.5rem] p-6 sm:p-8 relative overflow-hidden flex items-center justify-center shadow-3xl shadow-black/80"
+                   initial={{ opacity: 0, scale: 0.95 }}
+                   whileInView={{ opacity: 1, scale: 1 }}
+                   viewport={{ once: true, margin: "-100px" }}
+                   transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+                 >
+                    {/* Living Tech Grid Background - Styled in green instead of purple */}
+                    <div className="absolute inset-0 bg-[radial-gradient(rgba(151,251,46,0.04)_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none"></div>
+                    
+                    {/* SVG Interactive Network with scaled center 300, 300 */}
+                    <svg viewBox="0 0 600 600" className="w-full h-full relative z-10 select-none">
+                      <defs>
+                        {/* Glow Filters strictly configured in green / white */}
+                        <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
+                          <feGaussianBlur stdDeviation="5" result="blur" />
+                          <feMerge>
+                            <feMergeNode in="blur" />
+                            <feMergeNode in="SourceGraphic" />
+                          </feMerge>
+                        </filter>
+                        <filter id="glow-strong-green" x="-50%" y="-50%" width="200%" height="200%">
+                          <feGaussianBlur stdDeviation="9" result="blur" />
+                          <feMerge>
+                            <feMergeNode in="blur" />
+                            <feMergeNode in="SourceGraphic" />
+                          </feMerge>
+                        </filter>
+                        <filter id="glow-light-green" x="-30%" y="-30%" width="160%" height="160%">
+                          <feGaussianBlur stdDeviation="3" result="blur" />
+                          <feMerge>
+                            <feMergeNode in="blur" />
+                            <feMergeNode in="SourceGraphic" />
+                          </feMerge>
+                        </filter>
+                      </defs>
+
+                      {/* Connection Wires from (300, 300) center */}
+                      {networkNodes.map((node) => {
+                        const pathD = getCurvePath(300, 300, node.x, node.y);
+                        const isHovered = hoveredNetworkNode?.id === node.id;
+                        return (
+                          <g key={`wire-group-${node.id}`}>
+                            {/* Base Wire - transitions from green to white on hover */}
+                            <path 
+                              d={pathD}
+                              fill="none"
+                              stroke={isHovered ? "#ffffff" : "rgba(151, 251, 46, 0.12)"}
+                              strokeWidth={isHovered ? 2.5 : 1.2}
+                              className="transition-all duration-300"
+                            />
+                            
+                            {/* Animated Pulse traveling from center outward */}
+                            <circle r={isHovered ? 5.5 : 3.5} fill={isHovered ? "#ffffff" : "#97fb2e"} filter="url(#glow-light-green)">
+                              <animateMotion 
+                                dur={isHovered ? "1.2s" : "2.4s"} 
+                                repeatCount="indefinite" 
+                                path={pathD} 
+                                begin={`${node.id * 0.25}s`} 
+                              />
+                            </circle>
+                          </g>
+                        );
+                      })}
+
+                      {/* Core Center (Anima System Nucleus) - translated exactly to (255, 255) for 300, 300 perfect center alignment of 90x90 rect */}
+                      <g transform="translate(255, 255)">
+                        {/* Back Glow - glowing neon green */}
+                        <circle 
+                          cx="45" 
+                          cy="45" 
+                          r="60" 
+                          fill="rgba(151, 251, 46, 0.08)" 
+                          filter="url(#glow-strong-green)" 
+                          className="animate-pulse"
+                        />
+                        
+                        {/* Core rounded box */}
+                        <rect 
+                          x="0" 
+                          y="0" 
+                          width="90" 
+                          height="90" 
+                          rx="28" 
+                          fill="#090d06" 
+                          stroke={hoveredNetworkNode ? "#ffffff" : "#97fb2e"} 
+                          strokeWidth="2" 
+                          className="transition-all duration-500"
+                          style={{ filter: 'drop-shadow(0px 0px 18px rgba(151, 251, 46, 0.45))' }}
+                        />
+                        
+                        {/* Stacked cards representing Anima System dynamic framework */}
+                        <g transform="translate(29, 26)" stroke={hoveredNetworkNode ? "#ffffff" : "#97fb2e"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" className="transition-all duration-300">
+                          <path d="M16 2L2 9L16 16L30 9L16 2Z" fill="rgba(151, 251, 46, 0.08)" />
+                          <path d="M2 14L16 21L30 14" />
+                          <path d="M2 19L16 26L30 19" />
+                        </g>
+
+                        {/* Text under Anima logo */}
+                        <text 
+                          x="45" 
+                          y="78" 
+                          textAnchor="middle" 
+                          fill="rgba(255, 255, 255, 0.5)" 
+                          fontSize="7" 
+                          fontFamily="monospace"
+                          fontWeight="bold"
+                          letterSpacing="1"
+                        >
+                          {hoveredNetworkNode ? 'LINK ATIVO' : 'ANIMA CORE'}
+                        </text>
+                      </g>
+
+                      {/* Client Nodes (Outer Rounded Square Nodes) */}
+                      {networkNodes.map((node) => {
+                        const isHovered = hoveredNetworkNode?.id === node.id;
+                        return (
+                          <g 
+                            key={`node-${node.id}`}
+                            className="cursor-pointer"
+                            onMouseEnter={() => setHoveredNetworkNode(node)}
+                            onMouseLeave={() => setHoveredNetworkNode(null)}
+                          >
+                            {/* Outer glowing focus indicator ring */}
+                            {isHovered && (
+                              <circle 
+                                cx={node.x} 
+                                cy={node.y} 
+                                r="28" 
+                                fill="rgba(151, 251, 46, 0.08)"
+                                filter="url(#glow-green)"
+                              />
+                            )}
+                            
+                            {/* Mini Client Rect */}
+                            <rect 
+                              x={node.x - 18} 
+                              y={node.y - 18} 
+                              width="36" 
+                              height="36" 
+                              rx="10" 
+                              fill="#050804" 
+                              stroke={isHovered ? "#ffffff" : "rgba(151, 251, 46, 0.4)"}
+                              strokeWidth={isHovered ? 2 : 1.2}
+                              className="transition-all duration-300"
+                              style={isHovered ? { filter: 'drop-shadow(0px 0px 10px rgba(151, 251, 46, 0.5))' } : undefined}
+                            />
+                            
+                            {/* Inner core dot */}
+                            <circle 
+                              cx={node.x} 
+                              cy={node.y} 
+                              r="4.5" 
+                              fill={isHovered ? "#ffffff" : "#97fb2e"} 
+                              className="transition-colors duration-300"
+                              style={{ filter: isHovered ? 'drop-shadow(0px 0px 5px #ffffff)' : 'drop-shadow(0px 0px 4px #97fb2e)' }}
+                            />
+                          </g>
+                        );
+                      })}
+                    </svg>
+                 </motion.div>
+
+                 {/* HUD Status Overlay — Positioned BELOW the card to prevent overlap with bottom nodes */}
+                 <div className="w-full max-w-[580px] sm:max-w-[620px] bg-[#090d07]/90 border border-zinc-850 rounded-2xl p-4.5 sm:p-5 backdrop-blur-md flex flex-col space-y-2 z-20 shadow-xl">
+                    <div className="flex items-center justify-between">
+                       <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">Status da Nuvem</span>
+                       <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 font-mono">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> ONLINE
+                       </span>
+                    </div>
+                    
+                    <div className="transition-all duration-350 min-h-[46px] flex flex-col justify-center">
+                       {hoveredNetworkNode ? (
+                          <div className="space-y-1">
+                             <div className="text-sm font-semibold text-zinc-100 flex items-center justify-between">
+                               <span className="text-zinc-200">{hoveredNetworkNode.name}</span>
+                               <span className="text-xs text-[#97fb2e] font-mono font-bold">{hoveredNetworkNode.status}</span>
+                             </div>
+                             <div className="flex items-center justify-between text-[11px] text-zinc-500 font-mono">
+                               <span>{hoveredNetworkNode.desc}</span>
+                               <span className="text-zinc-400">Latência: {hoveredNetworkNode.latency} • CPU: {hoveredNetworkNode.cpu}</span>
+                             </div>
+                          </div>
+                       ) : (
+                          <div className="space-y-1">
+                             <div className="text-xs text-zinc-350 font-medium">
+                               Monitorando <span className="text-[#97fb2e] font-semibold font-mono">8 Servidores Clientes</span> simultaneamente
+                             </div>
+                             <div className="text-[11px] text-zinc-500 font-mono">
+                               Passe o mouse sobre os blocos para inspecionar os contêineres Google Cloud.
+                             </div>
+                          </div>
+                       )}
+                    </div>
                  </div>
               </div>
            </div>
