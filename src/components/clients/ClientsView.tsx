@@ -200,7 +200,7 @@ export function ClientsView({ onClientSelect }: { onClientSelect?: (id: string) 
             <button
               onClick={() => setViewMode('list')}
               className={cn(
-                "p-1.5 rounded-md transition-colors",
+                "p-1.5 rounded-md transition-colors cursor-pointer",
                 viewMode === 'list' ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"
               )}
             >
@@ -209,7 +209,7 @@ export function ClientsView({ onClientSelect }: { onClientSelect?: (id: string) 
             <button
               onClick={() => setViewMode('grid')}
               className={cn(
-                "p-1.5 rounded-md transition-colors",
+                "p-1.5 rounded-md transition-colors cursor-pointer",
                 viewMode === 'grid' ? "bg-zinc-800 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"
               )}
             >
@@ -220,7 +220,7 @@ export function ClientsView({ onClientSelect }: { onClientSelect?: (id: string) 
 
         <button 
           onClick={() => handleOpenModal()}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-zinc-950 font-semibold py-2.5 px-6 rounded-full transition-colors text-sm"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-zinc-950 font-semibold py-2.5 px-6 rounded-full transition-colors text-sm cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Novo Cliente

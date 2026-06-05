@@ -64,7 +64,7 @@ export function Sidebar({ currentView, onViewChange, isCollapsed, onToggleCollap
               <div className="relative group flex items-center shrink-0 ml-2">
                 <button
                   onClick={onCloseMobile && mobileOpen ? onCloseMobile : onToggleCollapse}
-                  className="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center rounded-xl md:rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+                  className="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center rounded-xl md:rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50 transition-colors cursor-pointer"
                   title=""
                 >
                   {mobileOpen ? <X className="w-5 h-5 text-zinc-400" /> : <PanelLeft className="w-5 h-5" />}

@@ -71,7 +71,7 @@ export function AuditView() {
           </div>
         </div>
 
-        <button className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-200 text-sm font-medium py-2.5 px-5 rounded-full transition-colors whitespace-nowrap">
+        <button className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-200 text-sm font-medium py-2.5 px-5 rounded-full transition-colors whitespace-nowrap cursor-pointer">
           <Download className="w-4 h-4" />
           Exportar Logs (CSV)
         </button>
@@ -154,7 +154,7 @@ export function AuditView() {
               </AnimatePresence>
             </div>
 
-            <button className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2 px-4 hover:border-zinc-700 transition-all">
+            <button className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2 px-4 hover:border-zinc-700 transition-all cursor-pointer">
               <Calendar className="w-4 h-4 text-zinc-500" />
               Últimos 7 dias
             </button>

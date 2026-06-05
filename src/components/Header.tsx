@@ -137,7 +137,7 @@ export function Header({ currentView, onNavigate, onToggleMobileSidebar }: Heade
                       setSearchTerm('');
                       if (onNavigate) onNavigate('client-detail', client.id);
                     }}
-                    className="w-full text-left px-4 py-2 hover:bg-zinc-800 transition-colors flex items-center gap-3"
+                    className="w-full text-left px-4 py-2 hover:bg-zinc-800 transition-colors flex items-center gap-3 cursor-pointer"
                   >
                     <div className="w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-400">
                       {client.name.substring(0,2).toUpperCase()}
@@ -149,7 +149,7 @@ export function Header({ currentView, onNavigate, onToggleMobileSidebar }: Heade
                           href={client.domain.startsWith('http') ? client.domain : `https://${client.domain}`} 
                           target="_blank" 
                           rel="noopener noreferrer" 
-                          className="text-emerald-400 hover:underline"
+                          className="text-emerald-400 hover:underline cursor-pointer"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {client.domain}
@@ -175,7 +175,7 @@ export function Header({ currentView, onNavigate, onToggleMobileSidebar }: Heade
           <div className="relative" ref={profileRef}>
             <button 
               onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center hover:border-zinc-500 transition-colors focus:outline-none"
+              className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center hover:border-zinc-500 transition-colors focus:outline-none cursor-pointer"
             >
                {photoURL ? (
                  <img src={photoURL} alt={displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -186,7 +186,7 @@ export function Header({ currentView, onNavigate, onToggleMobileSidebar }: Heade
 
             {showProfileMenu && (
               <div className="absolute right-0 top-full mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl py-2 z-50">
-                <button className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-colors flex flex-col">
+                <button className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-colors flex flex-col cursor-pointer">
                   <span className="font-medium text-white">Meu perfil</span>
                   <span className="text-[10px] text-zinc-500">Alterar nome, cargo ou foto</span>
                 </button>
@@ -204,7 +204,7 @@ export function Header({ currentView, onNavigate, onToggleMobileSidebar }: Heade
                       console.error("Trocar de conta failed", e);
                     }
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-colors"
+                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-colors cursor-pointer"
                 >
                   Trocar de conta
                 </button>
@@ -213,7 +213,7 @@ export function Header({ currentView, onNavigate, onToggleMobileSidebar }: Heade
                     const { signOut } = await import('firebase/auth');
                     await signOut(auth);
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 hover:text-red-400 transition-colors cursor-pointer"
                 >
                   Sair do sistema
                 </button>

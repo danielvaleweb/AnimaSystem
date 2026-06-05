@@ -106,7 +106,7 @@ export function SettingsView() {
           <button 
             onClick={() => setActiveTab('integracao')}
             className={cn(
-              "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
               activeTab === 'integracao' 
                 ? "bg-zinc-900 text-accent border border-zinc-800/50" 
                 : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50 border border-transparent"
@@ -118,7 +118,7 @@ export function SettingsView() {
           <button 
             onClick={() => setActiveTab('geral')}
             className={cn(
-              "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors cursor-pointer",
               activeTab === 'geral' 
                 ? "bg-zinc-900 text-accent border border-zinc-800/50" 
                 : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50 border border-transparent"
@@ -295,7 +295,7 @@ export function SettingsView() {
                     <button 
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isUploading}
-                      className="flex-1 flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 py-3 px-4 rounded-xl text-sm font-medium transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 py-3 px-4 rounded-xl text-sm font-medium transition-colors cursor-pointer"
                     >
                       {isUploading ? <Loader2 className="w-4 h-4 animate-spin text-accent" /> : <Upload className="w-4 h-4" />}
                       {isUploading ? 'Enviando...' : 'Fazer Upload'}
@@ -331,7 +331,7 @@ export function SettingsView() {
                   <button 
                     onClick={handleSaveSettings}
                     disabled={isSaving}
-                    className="bg-accent hover:bg-[#86e029] text-zinc-950 font-bold px-6 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-2"
+                    className="bg-accent hover:bg-[#86e029] text-zinc-950 font-bold px-6 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-2 cursor-pointer"
                   >
                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings2 className="w-4 h-4" />}
                     Salvar Configurações

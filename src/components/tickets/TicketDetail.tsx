@@ -47,7 +47,7 @@ export function TicketDetail({ ticket, onClose }: TicketDetailProps) {
             </div>
             <h2 className="text-xl font-display font-bold text-zinc-100">{ticket.title}</h2>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-zinc-800 text-zinc-400 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-zinc-800 text-zinc-400 transition-colors cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>

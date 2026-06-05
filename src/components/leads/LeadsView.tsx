@@ -214,7 +214,7 @@ export function LeadsView() {
                           </div>
                           <button 
                             onClick={() => handleDelete(lead.id!)}
-                            className="text-zinc-600 hover:text-red-400 transition-colors p-1 opacity-0 group-hover:opacity-100"
+                            className="text-zinc-600 hover:text-red-400 transition-colors p-1 opacity-0 group-hover:opacity-100 cursor-pointer"
                             title="Excluir Lead"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

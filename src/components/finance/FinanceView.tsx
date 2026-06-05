@@ -421,14 +421,14 @@ export function FinanceView() {
                         <>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleEdit(trx); }}
-                            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-accent transition-colors"
+                            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-accent transition-colors cursor-pointer"
                             title="Editar"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleDelete(trx); }}
-                            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-400 transition-colors"
+                            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
                             title="Excluir"
                           >
                             <Trash2 className="w-4 h-4" />

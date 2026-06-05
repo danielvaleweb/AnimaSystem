@@ -104,7 +104,7 @@ export function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
         <div className="flex items-center gap-6">
           <button 
             onClick={onBack}
-            className="w-10 h-10 rounded-full flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors"
+            className="w-10 h-10 rounded-full flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -167,19 +167,19 @@ export function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowStatusMenu(false)}></div>
                 <div className="absolute right-0 top-10 w-44 bg-zinc-900 border border-zinc-700/50 rounded-xl shadow-xl z-20 py-1 overflow-hidden">
-                  <button onClick={() => handleToggleStatus('active')} className="w-full text-left px-4 py-2.5 text-sm text-accent hover:bg-zinc-800 flex items-center gap-3">
+                  <button onClick={() => handleToggleStatus('active')} className="w-full text-left px-4 py-2.5 text-sm text-accent hover:bg-zinc-800 flex items-center gap-3 cursor-pointer">
                     <Rocket className="w-4 h-4" /> Ativo
                   </button>
-                  <button onClick={() => handleToggleStatus('trial')} className="w-full text-left px-4 py-2.5 text-sm text-blue-400 hover:bg-zinc-800 flex items-center gap-3">
+                  <button onClick={() => handleToggleStatus('trial')} className="w-full text-left px-4 py-2.5 text-sm text-blue-400 hover:bg-zinc-800 flex items-center gap-3 cursor-pointer">
                     <Clock className="w-4 h-4" /> Trial
                   </button>
-                  <button onClick={() => handleToggleStatus('suspended')} className="w-full text-left px-4 py-2.5 text-sm text-rose-400 hover:bg-zinc-800 flex items-center gap-3">
+                  <button onClick={() => handleToggleStatus('suspended')} className="w-full text-left px-4 py-2.5 text-sm text-rose-400 hover:bg-zinc-800 flex items-center gap-3 cursor-pointer">
                     <Hand className="w-4 h-4" /> Suspenso
                   </button>
-                  <button onClick={() => handleToggleStatus('ended')} className="w-full text-left px-4 py-2.5 text-sm text-zinc-400 hover:bg-zinc-800 flex items-center gap-3">
+                  <button onClick={() => handleToggleStatus('ended')} className="w-full text-left px-4 py-2.5 text-sm text-zinc-400 hover:bg-zinc-800 flex items-center gap-3 cursor-pointer">
                     <Power className="w-4 h-4" /> Encerrado
                   </button>
-                  <button onClick={() => handleToggleStatus('developing')} className="w-full text-left px-4 py-2.5 text-sm text-purple-400 hover:bg-zinc-800 flex items-center gap-3">
+                  <button onClick={() => handleToggleStatus('developing')} className="w-full text-left px-4 py-2.5 text-sm text-purple-400 hover:bg-zinc-800 flex items-center gap-3 cursor-pointer">
                     <Code className="w-4 h-4" /> Em construção
                   </button>
                 </div>
@@ -190,7 +190,7 @@ export function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
           <div className="relative">
             <button 
               onClick={() => setShowMenu(!showMenu)}
-              className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100 transition-colors"
+              className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
             >
               <MoreVertical className="w-5 h-5" />
             </button>
@@ -201,7 +201,7 @@ export function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
                 <div className="absolute right-0 top-12 w-48 bg-zinc-900 border border-zinc-700/50 rounded-xl shadow-xl z-20 py-1 overflow-hidden">
                 <button 
                   onClick={() => { setShowMenu(false); setIsEditing(true); }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 flex items-center gap-2 cursor-pointer"
                 >
                   <Edit2 className="w-4 h-4 text-zinc-500" />
                   Editar Cliente
@@ -211,7 +211,7 @@ export function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
                 
                 <button 
                   onClick={() => { setShowMenu(false); handleDelete(); }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-800 flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-zinc-800 flex items-center gap-2 cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                   Excluir
@@ -238,7 +238,7 @@ export function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
+              "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap cursor-pointer",
               activeTab === tab.id 
                 ? "bg-zinc-800 text-zinc-100" 
                 : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"

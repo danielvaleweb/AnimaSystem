@@ -318,34 +318,34 @@ export function MonitorView() {
     <div className="flex flex-col h-full space-y-6">
       
       {/* NOC Header */}
-      <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-6 lg:p-8 flex flex-col md:flex-row gap-6 items-start md:items-center justify-between relative">
+      <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-4 sm:p-6 lg:p-8 flex flex-col xl:flex-row gap-6 items-stretch xl:items-center justify-between relative overflow-hidden">
         <div className="absolute top-0 left-6 right-6 h-[2px] bg-gradient-to-r from-emerald-400 via-accent to-emerald-400 rounded-b"></div>
-        <div className="flex items-center gap-5">
-          <div className="w-16 h-16 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center relative flex-shrink-0">
-            <Server className="w-8 h-8 text-accent relative z-10" />
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:gap-5">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center relative shrink-0 self-center">
+            <Server className="w-6 sm:w-8 h-6 sm:h-8 text-accent relative z-10" />
             <div className={cn("absolute inset-0 bg-accent/20 rounded-2xl transition-opacity duration-1000", pulse ? "opacity-100" : "opacity-0")}></div>
           </div>
-          <div>
-             <div className="flex items-center flex-wrap gap-3">
-               <h2 className="font-display text-2xl font-bold text-zinc-100">Monitoramento de Consumo (NOC)</h2>
+          <div className="text-center sm:text-left min-w-0">
+             <div className="flex items-center gap-3 justify-center sm:justify-start">
+               <h2 className="font-display text-xl sm:text-2xl font-bold text-zinc-100 leading-tight">Monitoramento de Consumo (NOC)</h2>
              </div>
-             <p className="text-zinc-400 text-sm mt-1 flex flex-col md:flex-row md:items-center gap-2">
-               <span>Status e limites em tempo real da infraestrutura dos clientes</span>
+             <p className="text-zinc-400 text-xs sm:text-sm mt-1 whitespace-normal">
+               Status e limites em tempo real da infraestrutura dos clientes
              </p>
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-2 shrink-0">
-          <div className="flex flex-wrap gap-2 lg:gap-4 justify-end items-center">
+        <div className="flex flex-col items-stretch xl:items-end gap-3 shrink-0">
+          <div className="flex flex-col sm:flex-row gap-2 lg:gap-4 items-stretch sm:items-center w-full justify-start xl:justify-end">
               {/* Custom Client Selector (Anchored Overlay) */}
-              <div className="relative">
+              <div className="relative w-full sm:w-52">
                 <button
                   type="button"
                   onClick={() => {
                     setIsClientDropdownOpen(!isClientDropdownOpen);
                     setIsTimeDropdownOpen(false);
                   }}
-                  className="flex items-center justify-between gap-2 bg-zinc-950 border border-zinc-800 text-zinc-200 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-700 min-w-[200px] cursor-pointer text-left select-none"
+                  className="flex items-center justify-between gap-2 bg-zinc-950 border border-zinc-800 text-zinc-200 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-700 w-full cursor-pointer text-left select-none"
                 >
                   <span className="truncate">{selectedClient?.name || 'Nenhum cliente...'}</span>
                   <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isClientDropdownOpen && "rotate-180")} />
@@ -393,16 +393,16 @@ export function MonitorView() {
               </div>
               
               {/* Custom TimeRange Selector (Anchored Overlay) */}
-              <div className="relative">
+              <div className="relative w-full sm:w-44">
                 <button
                   type="button"
                   onClick={() => {
                     setIsTimeDropdownOpen(!isTimeDropdownOpen);
                     setIsClientDropdownOpen(false);
                   }}
-                  className="flex items-center justify-between gap-2 bg-zinc-950 border border-zinc-800 text-zinc-200 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-700 cursor-pointer text-left select-none min-w-[155px]"
+                  className="flex items-center justify-between gap-2 bg-zinc-950 border border-zinc-800 text-zinc-200 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-700 cursor-pointer text-left select-none w-full"
                 >
-                  <span>
+                  <span className="truncate text-left block w-full">
                     {timeRange === '30d' ? 'Últimos 30 Dias' :
                      timeRange === '7d' ? 'Últimos 7 Dias' :
                      timeRange === '1d' ? 'Últimas 24h' : 'Personalizado'}
@@ -420,7 +420,7 @@ export function MonitorView() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 10 }}
                         transition={{ duration: 0.3, ease: 'easeOut' }}
-                        className="absolute right-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[170px] p-anchored-overlay-enter-active"
+                        className="absolute left-0 sm:left-auto sm:right-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden w-full sm:min-w-[170px] p-anchored-overlay-enter-active"
                         style={{ transformOrigin: 'top' }}
                       >
                         {[
@@ -453,40 +453,39 @@ export function MonitorView() {
               </div>
 
               <button
+                 type="button"
                  onClick={fetchClientMetrics}
                  disabled={isRefreshing || (!selectedClient?.firebaseProjectId && !selectedClient?.parsedFirebaseConfig)}
-                 className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold bg-[#97fb2e] hover:bg-[#85df29] text-[#0a1007] rounded-xl transition-all shadow-[0_0_20px_rgba(151,251,46,0.15)] disabled:opacity-50 cursor-pointer"
+                 className="flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold bg-[#97fb2e] hover:bg-[#85df29] text-[#0a1007] rounded-xl transition-all shadow-[0_0_20px_rgba(151,251,46,0.15)] disabled:opacity-50 cursor-pointer w-full sm:w-auto shrink-0"
                >
-                 <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
-                 <span className="hidden sm:block">Atualizar</span>
+                 <RefreshCw className={cn("w-4 h-4 shrink-0", isRefreshing && "animate-spin")} />
+                 <span>Atualizar</span>
                </button>
           </div>
           
           {timeRange === 'custom' && (
-             <div className="flex items-center gap-2 mt-2">
+             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-1 w-full justify-end">
                 <input 
-                  type="date"
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  className="bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-zinc-700"
-                  style={{ colorScheme: 'dark' }}
+                   type="date"
+                   value={customStart}
+                   onChange={(e) => setCustomStart(e.target.value)}
+                   className="bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-zinc-700 w-full sm:w-auto"
+                   style={{ colorScheme: 'dark' }}
                 />
-                <span className="text-zinc-500 text-xs">até</span>
+                <span className="text-zinc-500 text-xs text-center">até</span>
                 <input 
-                  type="date"
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  className="bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-zinc-700"
-                  style={{ colorScheme: 'dark' }}
+                   type="date"
+                   value={customEnd}
+                   onChange={(e) => setCustomEnd(e.target.value)}
+                   className="bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-zinc-700 w-full sm:w-auto"
+                   style={{ colorScheme: 'dark' }}
                 />
              </div>
           )}
-
-          {/* O ultima atualização vai ficar no Ultima checagem */}
         </div>
       </div>
 
-      {/* Cards de Status do Topo (NOC Hub Widgets with matching premium design) */}
+      {/* Cards de Status do Topo (NOC Hub Widgets) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Card 1: Status Geral */}
         <div className="bg-[#101112] border border-zinc-800/50 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
@@ -510,7 +509,7 @@ export function MonitorView() {
           </div>
         </div>
 
-        {/* Card 3: Conexão Banco */}
+        {/* Card 3: Plano Contratado */}
         <div className="bg-[#101112] border border-zinc-800/50 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
           <span className="text-zinc-500 text-xs font-medium mb-1.5 block">Plano Contratado</span>
           <div className="flex items-center gap-2 text-[#97fb2e] font-extrabold text-lg sm:text-xl">
@@ -531,37 +530,43 @@ export function MonitorView() {
       <div className="flex-1 w-full flex flex-col">
         
         {/* Consumo de Cotas Limits */}
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-6 lg:p-8 flex flex-col">
-           <h3 className="font-display text-lg font-bold mb-6 flex items-center gap-2 text-white">
-              <Zap className="w-5 h-5 text-accent" />
-              Métricas do Google Cloud Monitoring
-            </h3>
+        <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-4 sm:p-6 lg:p-8 flex flex-col">
+           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+              <h3 className="font-display text-lg font-bold flex items-center gap-2 text-white">
+                 <Zap className="w-5 h-5 text-accent shrink-0" />
+                 <span>Métricas do Google Cloud Monitoring</span>
+              </h3>
+              {selectedClient?.firebaseProjectId && gcpMetrics && (
+                 <div className="flex flex-wrap gap-2">
+                   <button 
+                     type="button"
+                     onClick={runDiscovery}
+                     disabled={isDiscovering}
+                     className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors disabled:opacity-50 cursor-pointer"
+                   >
+                      {isDiscovering ? "Buscando..." : "Descobrir Métricas Firestore"}
+                   </button>
+                   <button 
+                     type="button"
+                     onClick={() => setDebugMode(!debugMode)}
+                     className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border cursor-pointer", debugMode ? "bg-accent/20 border-accent/30 text-accent" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-400 hover:text-zinc-200")}
+                   >
+                      Modo Debug {debugMode ? "ON" : "OFF"}
+                   </button>
+                 </div>
+              )}
+           </div>
 
             {!selectedClient?.firebaseProjectId ? (
-               <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
+               <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm py-8">
                  Cliente não possui ID de Projeto configurado.
                </div>
             ) : !gcpMetrics ? (
-                <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
+                <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm py-8">
                   {isRefreshing ? "Buscando métricas via GCP..." : "Clique em 'Atualizar Métricas' para buscar dados reais do GCP."}
                 </div>
             ) : (
-                <div className="space-y-4 relative">
-                  <div className="absolute -top-12 right-0 flex gap-2">
-                    <button 
-                      onClick={runDiscovery}
-                      disabled={isDiscovering}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors disabled:opacity-50"
-                    >
-                       {isDiscovering ? "Buscando..." : "Descobrir Métricas Firestore"}
-                    </button>
-                    <button 
-                      onClick={() => setDebugMode(!debugMode)}
-                      className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border", debugMode ? "bg-accent/20 border-accent/30 text-accent" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-400 hover:text-zinc-200")}
-                    >
-                       Modo Debug {debugMode ? "ON" : "OFF"}
-                    </button>
-                  </div>
+                <div className="space-y-4">
 
                   {discoveryResults && (
                     <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl col-span-full overflow-x-auto">
@@ -569,7 +574,7 @@ export function MonitorView() {
                         <h3 className="font-bold text-zinc-100 flex items-center gap-2">
                           <Database className="w-5 h-5 text-blue-500" /> Métricas Descobertas
                         </h3>
-                        <button onClick={() => setDiscoveryResults(null)} className="text-zinc-500 hover:text-zinc-300">
+                        <button type="button" onClick={() => setDiscoveryResults(null)} className="text-zinc-500 hover:text-zinc-300 cursor-pointer">
                           <XOctagon className="w-4 h-4" />
                         </button>
                       </div>
@@ -627,15 +632,15 @@ export function MonitorView() {
                     return (
                     <div key={idx} className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/50">
                       <div className="flex justify-between items-center mb-1">
-                         <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm text-zinc-300">{item.label}</span>
-                            {item.freeTier > 0 && (
-                              <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">Isento até {item.freeTier.toLocaleString()}{item.suffix}</span>
-                            )}
-                         </div>
-                         <span className="font-bold text-lg text-zinc-100">
-                           {val.toLocaleString()}
-                         </span>
+                          <div className="flex items-center gap-2">
+                             <span className="font-medium text-sm text-zinc-300">{item.label}</span>
+                             {item.freeTier > 0 && (
+                               <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">Isento até {item.freeTier.toLocaleString()}{item.suffix}</span>
+                             )}
+                          </div>
+                          <span className="font-bold text-lg text-zinc-100">
+                            {val.toLocaleString()}
+                          </span>
                       </div>
                       
                       {debugMode && (
@@ -662,10 +667,10 @@ export function MonitorView() {
                          </div>
                       )}
                       
-                      {item.key === 'realtime' && (
+                      {item.key === 'realtime text-zinc-500' && (
                          <div className="flex justify-between items-center text-xs p-2 rounded bg-zinc-900 border border-zinc-800">
                             <span className="text-zinc-500">Estimativa de consumo:</span>
-                            <span className="text-emerald-400 font-medium">Incluído nas Leituras</span>
+                            <span className="text-emerald-400 font-medium font-mono">Incluído nas Leituras</span>
                          </div>
                       )}
 
@@ -729,9 +734,9 @@ export function MonitorView() {
                        <div className="flex justify-between items-center text-xs p-2 rounded bg-zinc-900 border border-zinc-800">
                              <span className="text-zinc-500">Estimativa de consumo:</span>
                              {storageCostBRL > 0 ? (
-                                <span className="text-emerald-400 font-medium">~R$ {storageCostBRL.toFixed(4)} BRL / mês</span>
+                                <span className="text-emerald-400 font-medium font-mono">~R$ {storageCostBRL.toFixed(4)} BRL / mês</span>
                              ) : (
-                                <span className="text-zinc-400 font-medium">Dentro do limite gratuito</span>
+                                <span className="text-zinc-400 font-medium font-mono">Dentro do limite gratuito</span>
                              )}
                        </div>
                      </div>
@@ -787,9 +792,9 @@ export function MonitorView() {
                        <div className="flex justify-between items-center text-xs p-2 rounded bg-zinc-900 border border-zinc-800">
                              <span className="text-zinc-500">Estimativa de consumo:</span>
                              {cloudStorageCostBRL > 0 ? (
-                                <span className="text-emerald-400 font-medium">~R$ {cloudStorageCostBRL.toFixed(4)} BRL / mês</span>
+                                <span className="text-emerald-400 font-medium font-mono font-mono">~R$ {cloudStorageCostBRL.toFixed(4)} BRL / mês</span>
                              ) : (
-                                <span className="text-zinc-400 font-medium">Dentro do limite gratuito</span>
+                                <span className="text-zinc-400 font-medium font-mono font-mono">Dentro do limite gratuito</span>
                              )}
                        </div>
                      </div>
@@ -806,35 +811,36 @@ export function MonitorView() {
             )}
         </div>
 
-
-
       </div>
 
       {selectedClient && (
         <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-6 lg:p-8 flex flex-col mt-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-display text-lg font-bold flex items-center gap-2 text-white">
-              <Server className="w-5 h-5 text-accent" />
-              Configuração do Banco de Dados ({selectedClient.name})
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <h3 className="font-display text-lg font-bold flex items-center gap-2 text-white min-w-0">
+              <Server className="w-5 h-5 text-accent shrink-0" />
+              <span className="truncate">Configuração do Banco de Dados ({selectedClient.name})</span>
             </h3>
             {!editingFirebase ? (
               <button 
+                type="button"
                 onClick={() => setEditingFirebase(true)}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium rounded-xl transition-colors"
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium rounded-xl transition-colors cursor-pointer shrink-0"
               >
                 Editar Configuração
               </button>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button 
+                  type="button"
                   onClick={() => setEditingFirebase(false)}
-                  className="px-4 py-2 bg-transparent hover:bg-zinc-800 text-zinc-400 text-sm font-medium rounded-xl transition-colors"
+                  className="px-4 py-2 bg-transparent hover:bg-zinc-800 text-zinc-400 text-sm font-medium rounded-xl transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button 
+                  type="button"
                   onClick={handleSaveFirebaseConfig}
-                  className="px-4 py-2 bg-accent hover:bg-accent-hover text-black text-sm font-medium rounded-xl transition-colors"
+                  className="px-4 py-2 bg-accent hover:bg-accent-hover text-black text-sm font-medium rounded-xl transition-colors cursor-pointer"
                 >
                   Salvar
                 </button>
@@ -878,7 +884,7 @@ export function MonitorView() {
                 <div className="bg-zinc-950/50 p-4 border border-zinc-800 rounded-xl">
                   <div className="flex items-center justify-between mb-3">
                     <label className="text-sm font-medium text-zinc-400 block">Coleções para Monitorar (Volume Real)</label>
-                    <button onClick={handleAddMonitorCol} className="text-xs text-accent hover:underline">
+                    <button type="button" onClick={handleAddMonitorCol} className="text-xs text-accent hover:underline cursor-pointer">
                       + Adicionar Coleção
                     </button>
                   </div>
@@ -914,7 +920,7 @@ export function MonitorView() {
                               onChange={e => handleUpdateMonitorCol(c.id, 'writeWeight', Number(e.target.value))} 
                               className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-center" 
                             />
-                            <button onClick={() => handleRemoveMonitorCol(c.id)} className="text-rose-500 hover:text-rose-400">
+                            <button type="button" onClick={() => handleRemoveMonitorCol(c.id)} className="text-rose-500 hover:text-rose-400 cursor-pointer">
                               <XOctagon className="w-3 h-3" />
                             </button>
                          </div>
@@ -925,19 +931,23 @@ export function MonitorView() {
               </div>
             </div>
           ) : (
-            <div className="flex gap-4 p-4 rounded-xl bg-zinc-950/50 border border-zinc-800/60">
-              <div className="flex-1">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 rounded-xl bg-zinc-950/50 border border-zinc-800/60">
+              <div className="min-w-0">
                 <span className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Project ID</span>
-                <span className="text-zinc-200 font-mono text-sm">{selectedClient.firebaseProjectId || 'Não configurado'}</span>
+                <span className="text-zinc-200 font-mono text-sm break-all">{selectedClient.firebaseProjectId || 'Não configurado'}</span>
               </div>
-              <div className="flex-1">
+              <div className="min-w-0">
                 <span className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Database Name</span>
-                <span className="text-zinc-200 font-mono text-sm">{selectedClient.firebaseDatabaseName || '(default)'}</span>
+                <span className="text-zinc-200 font-mono text-sm break-all">{selectedClient.firebaseDatabaseName || '(default)'}</span>
               </div>
-              <div className="flex-1">
+              <div className="min-w-0">
                 <span className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Status SDK</span>
-                <span className="text-zinc-200 text-sm flex items-center gap-2">
-                  {selectedClient.parsedFirebaseConfig ? <><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Configurado</> : <><div className="w-2 h-2 rounded-full bg-rose-500"></div> Pendente</>}
+                <span className="text-zinc-200 text-sm flex items-center gap-2 mt-1">
+                  {selectedClient.parsedFirebaseConfig ? (
+                    <><span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span> Configurado</>
+                  ) : (
+                    <><span className="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span> Pendente</>
+                  )}
                 </span>
               </div>
             </div>
@@ -958,10 +968,10 @@ export function MonitorView() {
               <table className="w-full text-left text-sm text-zinc-300">
                 <thead className="bg-zinc-950/80 text-zinc-400 sticky top-0">
                   <tr>
-                    <th className="p-3">Métrica</th>
-                    <th className="p-3 w-48">Firebase Console (30 dias)</th>
-                    <th className="p-3 w-48">AnymaSystem (API)</th>
-                    <th className="p-3 w-32">Divergência</th>
+                    <th className="p-3 font-semibold">Métrica</th>
+                    <th className="p-3 w-48 font-semibold">Firebase Console (30 dias)</th>
+                    <th className="p-3 w-48 font-semibold">AnymaSystem (API)</th>
+                    <th className="p-3 w-32 font-semibold">Divergência</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60 font-mono">
@@ -1004,4 +1014,3 @@ export function MonitorView() {
     </div>
   );
 }
-
