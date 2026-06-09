@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "AnimaSystem",
+  "description": "Orquestrador de infraestrutura em nuvem redundante e de alta performance via Google Cloud",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
