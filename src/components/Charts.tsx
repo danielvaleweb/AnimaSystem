@@ -69,8 +69,8 @@ export function RevenueChart() {
           <AreaChart data={data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#ccff00" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#ccff00" stopOpacity={0}/>
+                <stop offset="5%" stopColor="#D7FE03" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#D7FE03" stopOpacity={0}/>
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
@@ -78,9 +78,9 @@ export function RevenueChart() {
             <YAxis stroke="#71717a" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `R$${val/1000}k`} />
             <Tooltip 
               contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '1rem' }}
-              itemStyle={{ color: '#ccff00' }}
+              itemStyle={{ color: '#D7FE03' }}
             />
-            <Area type="monotone" dataKey="value" stroke="#ccff00" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+            <Area type="monotone" dataKey="value" stroke="#D7FE03" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -154,7 +154,7 @@ export function ClientsChart() {
               cursor={{fill: '#27272a', opacity: 0.4}}
               contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '1rem' }}
             />
-            <Bar dataKey="cl" name="Ativos" fill="#ccff00" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="cl" name="Ativos" fill="#D7FE03" radius={[4, 4, 0, 0]} />
             <Bar dataKey="tri" name="Trial" fill="#52525b" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

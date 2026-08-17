@@ -1,8 +1,40 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Clients collection
+    match /clients/{clientId} {
+      // Anyone can read (needed for unauthenticated CPF lookup during registration)
+      allow read: if true;
+      // Writing requires authentication
+      allow create, update, delete: if request.auth != null;
+    }
+
+    // Settings collection (needed for unauthenticated heroImage lookup on LandingPage)
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Leads collection (needed for unauthenticated contact form submission)
+    match /leads/{leadId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null;
+    }
+
+    // Transactions collection
+    match /transactions/{transactionId} {
+      allow read, write: if request.auth != null && (resource == null || resource.data.ownerId == request.auth.uid) && (request.resource == null || request.resource.data.ownerId == request.auth.uid);
+    }
+
+    // Dismissed Transactions collection
+    match /dismissed_transactions/{dismissedId} {
+      allow read, write: if request.auth != null && (resource == null || resource.data.ownerId == request.auth.uid) && (request.resource == null || request.resource.data.ownerId == request.auth.uid);
+    }
+
+    // All other collections require authentication
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null;
     }
   }
 }

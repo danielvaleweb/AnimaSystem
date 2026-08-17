@@ -3,6 +3,7 @@ import { X, Upload, Loader2, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { ClientData } from '../../types';
 import { ref, uploadBytesResumable, getDownloadURL, getStorage, deleteObject } from 'firebase/storage';
 import { app, db } from '../../lib/firebase';
+import { ConfirmationModal } from '../ConfirmationModal';
 
 interface ClientModalProps {
   client: ClientData | null;
@@ -26,6 +27,7 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
     status: 'active'
   });
   const [uploading, setUploading] = useState(false);
+  const [showRemoveLogoConfirm, setShowRemoveLogoConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -51,7 +53,14 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.domain || !formData.firebaseProjectId) return;
+    if (!formData.name) {
+      alert("Por favor, preencha o Nome da Empresa.");
+      return;
+    }
+    if (!formData.responsible) {
+      alert("Por favor, preencha o Nome do Responsável.");
+      return;
+    }
     
     // Cast number fields properly
     formData.monthlyValue = Number(formData.monthlyValue) || 0;
@@ -97,7 +106,7 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
     try {
       const hubStorage = getStorage(app, 'gs://animahub.firebasestorage.app');
       const storageRef = ref(hubStorage, `clientes/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      const uploadTask = uploadBytesResumable(storageRef, file, { contentType: file.type, cacheControl: 'public, max-age=31536000' });
 
       await new Promise<void>((resolve, reject) => {
         uploadTask.on(
@@ -122,27 +131,26 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
   const handleRemoveLogo = async () => {
     if (!formData.logoUrl) return;
     
-    if (confirm('Deseja realmente remover a logo?')) {
-      try {
-        setUploading(true);
-        const hubStorage = getStorage(app, 'gs://animahub.firebasestorage.app');
-        const fileRef = ref(hubStorage, formData.logoUrl);
-        await deleteObject(fileRef).catch(e => console.error("Logo delete error:", e));
-        
-        setFormData(prev => ({ ...prev, logoUrl: '' }));
-        
-        // Immediately save to Firestore to keep it in sync since we deleted from Storage
-        if (client?.id) {
-          const { doc, updateDoc } = await import('firebase/firestore');
-          await updateDoc(doc(db, 'clients', client.id), {
-            logoUrl: ''
-          });
-        }
-      } catch (err) {
-        console.error('Failed to remove logo', err);
-      } finally {
-        setUploading(false);
+    try {
+      setUploading(true);
+      const hubStorage = getStorage(app, 'gs://animahub.firebasestorage.app');
+      const fileRef = ref(hubStorage, formData.logoUrl);
+      await deleteObject(fileRef).catch(e => console.error("Logo delete error:", e));
+      
+      setFormData(prev => ({ ...prev, logoUrl: '' }));
+      
+      // Immediately save to Firestore to keep it in sync since we deleted from Storage
+      if (client?.id) {
+        const { doc, updateDoc } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'clients', client.id), {
+          logoUrl: ''
+        });
       }
+    } catch (err) {
+      console.error('Failed to remove logo', err);
+    } finally {
+      setUploading(false);
+      setShowRemoveLogoConfirm(false);
     }
   };
 
@@ -153,14 +161,14 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
         onClick={onClose}
       ></div>
       
-      <div className="relative bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between p-6 border-b border-zinc-800">
+      <div className="relative bg-white border border-zinc-200 rounded-3xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 border-b border-zinc-200">
           <h2 className="font-display font-bold space-x-2 text-xl">
             {client ? 'Editar Cliente' : 'Novo Cliente'}
           </h2>
           <button 
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-zinc-800 text-zinc-400 transition-colors"
+            className="p-2 rounded-full hover:bg-zinc-100 text-zinc-500 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -170,21 +178,21 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
           <form id="client-form" onSubmit={handleSubmit} className="space-y-6">
             
             <div className="space-y-4">
-              <h3 className="font-display font-semibold text-lg text-zinc-200">Informações da Empresa</h3>
+              <h3 className="font-display font-semibold text-lg text-zinc-800">Informações da Empresa</h3>
               
               {/* Logo Upload Section */}
-              <div className="flex items-center gap-4 bg-zinc-900/50 p-4 rounded-xl border border-zinc-800/50">
+              <div className="flex items-center gap-4 bg-zinc-50 p-4 rounded-xl border border-zinc-200/80">
                 <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center shrink-0 border border-zinc-700/50 overflow-hidden">
                   {formData.logoUrl ? (
                     <img src={formData.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
                   ) : formData.logoInitials ? (
-                    <span className="text-zinc-400 font-bold text-xl">{formData.logoInitials}</span>
+                    <span className="text-zinc-500 font-bold text-xl">{formData.logoInitials}</span>
                   ) : (
                     <ImageIcon className="w-6 h-6 text-zinc-500" />
                   )}
                 </div>
                 <div>
-                  <h4 className="text-sm font-medium text-zinc-200 mb-1">Logo do Cliente</h4>
+                  <h4 className="text-sm font-medium text-zinc-800 mb-1">Logo do Cliente</h4>
                   <p className="text-xs text-zinc-500 mb-3">Recomendado: 256x256px, formato PNG ou JPG.</p>
                   <input 
                     type="file" 
@@ -198,7 +206,7 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploading}
-                      className="flex items-center gap-2 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors border border-zinc-700/50 disabled:opacity-50"
+                      className="flex items-center gap-2 text-xs bg-white hover:bg-zinc-100 text-zinc-800 px-3 py-1.5 rounded-lg transition-colors border border-zinc-200 disabled:opacity-50"
                     >
                       {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                       {uploading ? 'Enviando...' : (formData.logoUrl ? 'Alterar Logo' : 'Fazer Upload')}
@@ -206,9 +214,9 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
                     {formData.logoUrl && (
                       <button
                         type="button"
-                        onClick={handleRemoveLogo}
+                        onClick={() => setShowRemoveLogoConfirm(true)}
                         disabled={uploading}
-                        className="flex items-center gap-2 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg transition-colors border border-red-500/20 disabled:opacity-50"
+                        className="flex items-center gap-2 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-600 px-3 py-1.5 rounded-lg transition-colors border border-red-500/20 disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         Remover
@@ -220,28 +228,48 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Nome da Empresa *</label>
+                  <label className="text-sm font-medium text-zinc-500">Nome da Empresa *</label>
                   <input 
-                    required
                     name="name"
                     value={formData.name || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                     placeholder="Ex: TechFlow Solutions"
                   />
                 </div>
+
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">CNPJ</label>
+                  <label className="text-sm font-medium text-zinc-500">Domínio</label>
+                  <input 
+                    name="domain"
+                    value={formData.domain || ''}
+                    onChange={handleChange}
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
+                    placeholder="Ex: techflow.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-500">URL da Logo (ou use upload acima)</label>
+                  <input 
+                    name="logoUrl"
+                    value={formData.logoUrl || ''}
+                    onChange={handleChange}
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
+                    placeholder="https://exemplo.com/logo.png"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-500">CNPJ</label>
                   <input 
                     name="cnpj"
                     value={formData.cnpj || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                     placeholder="00.000.000/0000-00"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Site da Empresa</label>
+                  <label className="text-sm font-medium text-zinc-500">Site da Empresa</label>
                   <input 
                     name="website"
                     value={formData.website || formData.domain || ''}
@@ -249,127 +277,184 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
                        handleChange(e);
                        setFormData(prev => ({ ...prev, domain: e.target.value }));
                     }}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                     placeholder="www.exemplo.com.br"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Data de Contratação</label>
+                  <label className="text-sm font-medium text-zinc-500">Data de Contratação</label>
                   <input 
                     type="date"
                     name="hireDate"
                     value={formData.hireDate || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Data de Encerramento</label>
+                  <label className="text-sm font-medium text-zinc-500">Data de Encerramento</label>
                   <input 
                     type="date"
                     name="endDate"
                     value={formData.endDate || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                   />
                 </div>
               </div>
             </div>
 
-            <hr className="border-zinc-800" />
+            <hr className="border-zinc-200" />
 
             <div className="space-y-4">
-              <h3 className="font-display font-semibold text-lg text-zinc-200">Informações do Responsável</h3>
+              <h3 className="font-display font-semibold text-lg text-zinc-800">Informações de Cobrança (Financeiro)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-500">Plano Contratado</label>
+                  <select
+                    name="plan"
+                    value={formData.plan || 'Starter'}
+                    onChange={handleChange}
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
+                  >
+                    <option value="Starter">Starter</option>
+                    <option value="Pro">Pro</option>
+                    <option value="Enterprise">Enterprise</option>
+                    <option value="Nenhum">Nenhum (Sem contrato ativo)</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-500">Valor Mensal (R$)</label>
+                  <input 
+                    type="number"
+                    name="monthlyValue"
+                    value={formData.monthlyValue !== undefined ? formData.monthlyValue : 290}
+                    onChange={handleChange}
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
+                    placeholder="Ex: 290"
+                    min="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-500">Dia do Vencimento</label>
+                  <input 
+                    type="number"
+                    name="dueDate"
+                    value={formData.dueDate !== undefined ? formData.dueDate : 5}
+                    onChange={handleChange}
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
+                    placeholder="Ex: 5"
+                    min="1"
+                    max="31"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <hr className="border-zinc-200" />
+
+            <div className="space-y-4">
+              <h3 className="font-display font-semibold text-lg text-zinc-800">Informações do Responsável</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Nome do Responsável *</label>
+                  <label className="text-sm font-medium text-zinc-500">Nome do Responsável *</label>
                   <input 
-                    required
                     name="responsible"
                     value={formData.responsible || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                     placeholder="Nome do contato principal"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">CPF</label>
+                  <label className="text-sm font-medium text-zinc-500">CPF</label>
                   <input 
                     name="cpf"
                     value={formData.cpf || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                     placeholder="000.000.000-00"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Telefone</label>
+                  <label className="text-sm font-medium text-zinc-500">E-mail do Responsável</label>
+                  <input 
+                    name="email"
+                    type="email"
+                    value={formData.email || ''}
+                    onChange={handleChange}
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
+                    placeholder="exemplo@email.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-500">Telefone</label>
                   <input 
                     name="phone"
                     value={formData.phone || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                     placeholder="(00) 00000-0000"
                   />
                 </div>
               </div>
             </div>
 
-            <hr className="border-zinc-800" />
+            <hr className="border-zinc-200" />
 
             <div className="space-y-4">
-              <h3 className="font-display font-semibold text-lg text-zinc-200">Endereço</h3>
+              <h3 className="font-display font-semibold text-lg text-zinc-800">Endereço</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">CEP</label>
+                  <label className="text-sm font-medium text-zinc-500">CEP</label>
                   <input 
                     name="cep"
                     value={formData.cep || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                     placeholder="00000-000"
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium text-zinc-400">Rua</label>
+                  <label className="text-sm font-medium text-zinc-500">Rua</label>
                   <input 
                     name="street"
                     value={formData.street || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Número</label>
+                  <label className="text-sm font-medium text-zinc-500">Número</label>
                   <input 
                     name="number"
                     value={formData.number || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Bairro</label>
+                  <label className="text-sm font-medium text-zinc-500">Bairro</label>
                   <input 
                     name="neighborhood"
                     value={formData.neighborhood || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">Complemento</label>
+                  <label className="text-sm font-medium text-zinc-500">Complemento</label>
                   <input 
                     name="complement"
                     value={formData.complement || ''}
                     onChange={handleChange}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 outline-none focus:border-accent/50 text-sm transition-all"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 outline-none focus:border-accent text-zinc-900 text-sm transition-all"
                   />
                 </div>
               </div>
             </div>
 
-            <hr className="border-zinc-800" />
+            <hr className="border-zinc-200" />
 
             {client && (
               <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4 flex gap-4 mt-6">
@@ -384,23 +469,34 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
           </form>
         </div>
 
-        <div className="p-6 border-t border-zinc-800 flex items-center justify-end gap-3 bg-zinc-950/50 rounded-b-3xl">
+        <div className="p-6 border-t border-zinc-200 flex items-center justify-end gap-3 bg-white rounded-b-3xl">
           <button 
             type="button"
             onClick={onClose}
-            className="px-6 py-2.5 rounded-full text-sm font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+            className="px-6 py-2.5 rounded-full text-sm font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 transition-colors cursor-pointer"
           >
             Cancelar
           </button>
           <button 
             type="submit"
             form="client-form"
-            className="px-6 py-2.5 rounded-full text-sm font-semibold bg-accent hover:bg-accent-hover text-zinc-950 transition-colors"
+            className="px-6 py-2.5 rounded-full text-sm font-semibold bg-accent hover:bg-accent-hover text-black transition-colors"
           >
             {client ? 'Salvar Alterações' : 'Criar Cliente'}
           </button>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={showRemoveLogoConfirm}
+        title="Remover Logo"
+        message="Deseja realmente remover a logo do cliente? Esta alteração será salva de imediato."
+        confirmText="Remover"
+        cancelText="Cancelar"
+        variant="danger"
+        onConfirm={handleRemoveLogo}
+        onCancel={() => setShowRemoveLogoConfirm(false)}
+      />
     </div>
   );
 }

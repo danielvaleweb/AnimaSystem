@@ -85,9 +85,9 @@ export function TicketsView() {
 
   const getStatusBadge = (status: TicketStatus) => {
     switch (status) {
-      case 'open': return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-xs font-medium text-rose-400"><AlertCircle className="w-3 h-3" /> Aberto</span>;
+      case 'open': return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500 border border-rose-500 text-xs font-semibold text-white"><AlertCircle className="w-3 h-3" /> Aberto</span>;
       case 'analysis': return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-xs font-medium text-orange-400"><CircleDashed className="w-3 h-3" /> Em Análise</span>;
-      case 'development': return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs font-medium text-blue-400"><Clock className="w-3 h-3" /> Em Desenvol.</span>;
+      case 'development': return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500 border border-blue-500 text-xs font-semibold text-white"><Clock className="w-3 h-3" /> Em Desenvol.</span>;
       case 'resolved': return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-medium text-emerald-400"><CheckCircle2 className="w-3 h-3" /> Resolvido</span>;
     }
   };
@@ -100,32 +100,32 @@ export function TicketsView() {
   };
 
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="flex flex-col h-full space-y-14">
       
       {/* Metrics Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
+        <div className="bg-white border border-zinc-200/80 rounded-2xl p-5">
            <p className="text-zinc-500 text-sm font-medium mb-1">Abertos</p>
            <h3 className="font-display font-bold text-3xl text-zinc-100">12</h3>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
+        <div className="bg-white border border-zinc-200/80 rounded-2xl p-5">
            <p className="text-zinc-500 text-sm font-medium mb-1">Em Análise</p>
            <h3 className="font-display font-bold text-3xl text-zinc-100">5</h3>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
+        <div className="bg-white border border-zinc-200/80 rounded-2xl p-5">
            <p className="text-zinc-500 text-sm font-medium mb-1">Em Desenvolvimento</p>
            <h3 className="font-display font-bold text-3xl text-zinc-100">3</h3>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-5">
+        <div className="bg-white border border-zinc-200/80 rounded-2xl p-5">
            <p className="text-zinc-500 text-sm font-medium mb-1">Tempo Médio Resposta</p>
            <h3 className="font-display font-bold text-3xl text-emerald-400">1.2h</h3>
         </div>
       </div>
 
       {/* Main List */}
-      <div className="flex-1 bg-zinc-900 border border-zinc-800/50 rounded-[2rem] flex flex-col relative">
+      <div className="flex-1 bg-white border border-zinc-200/80 rounded-[2rem] flex flex-col relative">
         
-        <div className="p-6 border-b border-zinc-800/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="p-6 border-b border-zinc-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4 w-full sm:w-auto">
             <div className="relative group w-full sm:w-72">
               <Search className="w-4 h-4 text-zinc-500 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-accent transition-colors" />
@@ -134,7 +134,7 @@ export function TicketsView() {
                 placeholder="Buscar ticket..." 
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 focus:border-accent/50 outline-none rounded-full py-2.5 pl-11 pr-4 text-sm text-zinc-200 placeholder:text-zinc-500 transition-all"
+                className="w-full bg-white border border-zinc-200 focus:border-accent/50 outline-none rounded-full py-2.5 pl-11 pr-4 text-sm text-zinc-800 placeholder:text-zinc-500 transition-all"
               />
             </div>
             
@@ -142,7 +142,7 @@ export function TicketsView() {
               <button
                 type="button"
                 onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
-                className="flex items-center justify-between gap-2.5 bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2.5 pl-5 pr-8 outline-none focus:border-accent/50 transition-all select-none cursor-pointer min-w-[160px]"
+                className="flex items-center justify-between gap-2.5 bg-white border border-zinc-200 text-sm text-zinc-700 rounded-full py-2.5 pl-5 pr-8 outline-none focus:border-accent/50 transition-all select-none cursor-pointer min-w-[160px]"
               >
                 <span>
                   {filterStatus === 'all' ? 'Todos os Status' :
@@ -162,7 +162,7 @@ export function TicketsView() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 10 }}
                       transition={{ duration: 0.3, ease: 'easeOut' }}
-                      className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[180px] p-anchored-overlay-enter-active"
+                      className="absolute left-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-sm z-40 py-1 overflow-hidden min-w-[180px] p-anchored-overlay-enter-active"
                       style={{ transformOrigin: 'top' }}
                     >
                       {[
@@ -182,8 +182,8 @@ export function TicketsView() {
                           className={cn(
                             "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
                             filterStatus === item.val
-                              ? "text-accent font-semibold hover:bg-zinc-900/40"
-                              : "text-zinc-300 hover:bg-zinc-900"
+                              ? "text-accent font-semibold hover:bg-white/40"
+                              : "text-zinc-700 hover:bg-white"
                           )}
                         >
                           <span>{item.label}</span>
@@ -205,7 +205,7 @@ export function TicketsView() {
         <div className="flex-1 overflow-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-zinc-800/50 text-sm text-zinc-500 bg-zinc-950/20">
+              <tr className="border-b border-zinc-200/80 text-sm text-zinc-500 bg-white/20">
                 <th className="font-medium p-4 pl-6 w-8 text-center border-r border-transparent">P</th >
                 <th className="font-medium p-4">Ticket / Assunto</th>
                 <th className="font-medium p-4">Cliente</th>
@@ -219,7 +219,7 @@ export function TicketsView() {
                 <tr 
                   key={ticket.id} 
                   onClick={() => setSelectedTicket(ticket)}
-                  className="hover:bg-zinc-800/20 transition-colors group cursor-pointer"
+                  className="hover:bg-zinc-100/20 transition-colors group cursor-pointer"
                 >
                   <td className="p-4 pl-6">
                      <div className="w-full h-full flex items-center justify-center">
@@ -227,12 +227,12 @@ export function TicketsView() {
                      </div>
                   </td>
                   <td className="p-4 py-5">
-                    <p className="font-medium text-zinc-200 group-hover:text-accent transition-colors">{ticket.title}</p>
+                    <p className="font-medium text-zinc-800 group-hover:text-accent transition-colors">{ticket.title}</p>
                     <p className="text-xs text-zinc-500 font-mono mt-0.5">{ticket.id}</p>
                   </td>
-                  <td className="p-4 text-sm text-zinc-300">{ticket.client}</td>
-                  <td className="p-4 text-sm text-zinc-400">{ticket.assignee || '-'}</td>
-                  <td className="p-4 text-sm text-zinc-400 flex items-center gap-2">
+                  <td className="p-4 text-sm text-zinc-700">{ticket.client}</td>
+                  <td className="p-4 text-sm text-zinc-500">{ticket.assignee || '-'}</td>
+                  <td className="p-4 text-sm text-zinc-500 flex items-center gap-2">
                     <MessageSquare className="w-3 h-3" />
                     {ticket.updatedAt}
                   </td>

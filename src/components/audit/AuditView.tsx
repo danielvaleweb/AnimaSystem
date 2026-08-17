@@ -55,32 +55,32 @@ export function AuditView() {
   });
 
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="flex flex-col h-full space-y-14">
       
       {/* Header Insight */}
-      <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-6 lg:p-8 flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
+      <div className="bg-white border border-zinc-200/80 rounded-[2rem] p-6 lg:p-8 flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
         <div className="flex items-center gap-5">
-          <div className="w-16 h-16 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center">
+          <div className="w-16 h-16 rounded-2xl bg-white border border-zinc-200 flex items-center justify-center">
             <ShieldCheck className="w-8 h-8 text-accent" />
           </div>
           <div>
              <h2 className="font-display text-2xl font-bold text-zinc-100">Auditoria Global</h2>
-             <p className="text-zinc-400 text-sm mt-1">
+             <p className="text-zinc-500 text-sm mt-1">
                Os logs brutos são armazendados no <b>Google Cloud Logging (BigQuery)</b> para retenção infinita sob baixo custo.
              </p>
           </div>
         </div>
 
-        <button className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-200 text-sm font-medium py-2.5 px-5 rounded-full transition-colors whitespace-nowrap cursor-pointer">
+        <button className="flex items-center gap-2 bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-800 text-sm font-medium py-2.5 px-5 rounded-full transition-colors whitespace-nowrap cursor-pointer">
           <Download className="w-4 h-4" />
           Exportar Logs (CSV)
         </button>
       </div>
 
-      <div className="flex-1 bg-zinc-900 border border-zinc-800/50 rounded-[2rem] flex flex-col relative">
+      <div className="flex-1 bg-white border border-zinc-200/80 rounded-[2rem] flex flex-col relative">
         
         {/* Filters */}
-        <div className="p-6 border-b border-zinc-800/50 flex flex-wrap gap-4 items-center justify-between bg-zinc-950/20">
+        <div className="p-6 border-b border-zinc-200/80 flex flex-wrap gap-4 items-center justify-between bg-white/20">
           <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
             <div className="relative group w-full sm:w-72">
               <Search className="w-4 h-4 text-zinc-500 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-accent transition-colors" />
@@ -89,7 +89,7 @@ export function AuditView() {
                 placeholder="Buscar usuário, cliente ou evento..." 
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 focus:border-accent/50 outline-none rounded-full py-2 pl-11 pr-4 text-sm text-zinc-200 placeholder:text-zinc-500 transition-all"
+                className="w-full bg-white border border-zinc-200 focus:border-accent/50 outline-none rounded-full py-2 pl-11 pr-4 text-sm text-zinc-800 placeholder:text-zinc-500 transition-all"
               />
             </div>
 
@@ -97,7 +97,7 @@ export function AuditView() {
               <button
                 type="button"
                 onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
-                className="flex items-center justify-between gap-2.5 bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2.5 pl-5 pr-8 outline-none focus:border-accent/50 transition-all select-none cursor-pointer min-w-[160px]"
+                className="flex items-center justify-between gap-2.5 bg-white border border-zinc-200 text-sm text-zinc-700 rounded-full py-2.5 pl-5 pr-8 outline-none focus:border-accent/50 transition-all select-none cursor-pointer min-w-[160px]"
               >
                 <span>
                   {filterType === 'all' ? 'Tipos de Evento' :
@@ -119,7 +119,7 @@ export function AuditView() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 10 }}
                       transition={{ duration: 0.3, ease: 'easeOut' }}
-                      className="absolute left-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[180px] p-anchored-overlay-enter-active"
+                      className="absolute left-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-sm z-40 py-1 overflow-hidden min-w-[180px] p-anchored-overlay-enter-active"
                       style={{ transformOrigin: 'top' }}
                     >
                       {[
@@ -141,8 +141,8 @@ export function AuditView() {
                           className={cn(
                             "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
                             filterType === item.val
-                              ? "text-accent font-semibold hover:bg-zinc-900/40"
-                              : "text-zinc-300 hover:bg-zinc-900"
+                              ? "text-accent font-semibold hover:bg-white/40"
+                              : "text-zinc-700 hover:bg-white"
                           )}
                         >
                           <span>{item.label}</span>
@@ -154,7 +154,7 @@ export function AuditView() {
               </AnimatePresence>
             </div>
 
-            <button className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 text-sm text-zinc-300 rounded-full py-2 px-4 hover:border-zinc-700 transition-all cursor-pointer">
+            <button className="flex items-center gap-2 bg-white border border-zinc-200 text-sm text-zinc-700 rounded-full py-2 px-4 hover:border-zinc-300 transition-all cursor-pointer">
               <Calendar className="w-4 h-4 text-zinc-500" />
               Últimos 7 dias
             </button>
@@ -165,7 +165,7 @@ export function AuditView() {
         <div className="flex-1 overflow-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-zinc-800/50 text-xs uppercase tracking-wider text-zinc-500 bg-zinc-950/20">
+              <tr className="border-b border-zinc-200/80 text-xs uppercase tracking-wider text-zinc-500 bg-white/20">
                 <th className="font-medium p-4 pl-6">Data / Hora</th>
                 <th className="font-medium p-4">Evento</th>
                 <th className="font-medium p-4">Usuário</th>
@@ -179,9 +179,9 @@ export function AuditView() {
                 const TypeIcon = info.icon;
                 
                 return (
-                  <tr key={log.id} className="hover:bg-zinc-800/20 transition-colors group text-sm">
+                  <tr key={log.id} className="hover:bg-zinc-100/20 transition-colors group text-sm">
                     <td className="p-4 pl-6 whitespace-nowrap">
-                      <div className="text-zinc-300">{log.timestamp.split(' ')[0]}</div>
+                      <div className="text-zinc-700">{log.timestamp.split(' ')[0]}</div>
                       <div className="text-xs font-mono text-zinc-500 mt-0.5">{log.timestamp.split(' ')[1]}</div>
                     </td>
                     <td className="p-4">
@@ -191,7 +191,7 @@ export function AuditView() {
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                             <span className="font-medium text-zinc-200">{log.description}</span>
+                             <span className="font-medium text-zinc-800">{log.description}</span>
                              {log.status === 'failure' && (
                                <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-red-500/20 text-red-400">Falha</span>
                              )}
@@ -202,12 +202,12 @@ export function AuditView() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 text-zinc-400">{log.user}</td>
+                    <td className="p-4 text-zinc-500">{log.user}</td>
                     <td className="p-4">
-                      <span className="text-zinc-300 block">{log.client}</span>
+                      <span className="text-zinc-700 block">{log.client}</span>
                     </td>
                     <td className="p-4">
-                      <span className="font-mono text-xs text-zinc-500 bg-zinc-950 px-2 py-1 rounded border border-zinc-800">
+                      <span className="font-mono text-xs text-zinc-500 bg-white px-2 py-1 rounded border border-zinc-200">
                         {log.ip}
                       </span>
                     </td>
@@ -226,7 +226,7 @@ export function AuditView() {
           </table>
         </div>
         
-        <div className="p-4 border-t border-zinc-800/50 bg-zinc-950 flex items-center justify-between text-xs text-zinc-500">
+        <div className="p-4 border-t border-zinc-200/80 bg-white flex items-center justify-between text-xs text-zinc-500">
            <span>Mostrando os últimos 100 registros em memória. Realize uma busca para carregar registros remotos (BigQuery).</span>
            <div className="flex items-center gap-1">
              <Database className="w-3 h-3" /> Conectado ao Log Stream

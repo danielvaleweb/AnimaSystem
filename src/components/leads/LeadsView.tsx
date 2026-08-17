@@ -4,6 +4,7 @@ import { db, auth } from '../../lib/firebase';
 import { Search, Plus, Trash2, Mail, Phone, Calendar, Clock, ChevronRight, MoreVertical, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../utils';
+import { ConfirmationModal } from '../ConfirmationModal';
 
 export interface LeadData {
   id?: string;
@@ -30,6 +31,7 @@ export function LeadsView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [activeDropdownLeadId, setActiveDropdownLeadId] = useState<string | null>(null);
+  const [leadToDeleteId, setLeadToDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     // se não há user, maybe we don't return early if it's a test? well no, let's just use a dummy uid for local tests or the actual auth
@@ -57,9 +59,9 @@ export function LeadsView() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Deseja realmente remover este lead?")) return;
     try {
       await deleteDoc(doc(db, 'leads', id));
+      setLeadToDeleteId(null);
     } catch (e) {
       console.error("Error deleting lead:", e);
     }
@@ -76,11 +78,11 @@ export function LeadsView() {
   }
 
   return (
-    <div className="space-y-6 flex flex-col">
+    <div className="space-y-14 flex flex-col">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
         <div>
-          <h2 className="text-2xl font-display font-medium text-white mb-1">CRM / Leads</h2>
-          <p className="text-zinc-400 text-sm">Gerencie solicitações de contatos no pipeline visual.</p>
+          <h2 className="text-2xl font-display font-medium text-black mb-1">CRM / Leads</h2>
+          <p className="text-zinc-500 text-sm">Gerencie solicitações de contatos no pipeline visual.</p>
         </div>
         
         <div className="relative w-full md:w-80">
@@ -90,7 +92,7 @@ export function LeadsView() {
             placeholder="Buscar por nome, email..." 
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-zinc-700 transition-colors"
+            className="w-full bg-white border border-zinc-200 rounded-xl pl-10 pr-4 py-2 text-sm text-black focus:outline-none focus:border-zinc-300 transition-colors"
           />
         </div>
       </div>
@@ -103,7 +105,7 @@ export function LeadsView() {
             return (
               <div 
                 key={stage.id} 
-                className="flex flex-col bg-zinc-900/20 backdrop-blur-sm rounded-2xl border border-zinc-800/60 overflow-hidden"
+                className="flex flex-col bg-white/20 backdrop-blur-sm rounded-2xl border border-zinc-200/60 overflow-hidden"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
@@ -112,12 +114,12 @@ export function LeadsView() {
                 }}
               >
                 {/* Stage Header */}
-                <div className={cn("p-4 border-b shrink-0 flex items-center justify-between bg-zinc-950/40", stage.borderColor)}>
+                <div className={cn("p-4 border-b shrink-0 flex items-center justify-between bg-white/40", stage.borderColor)}>
                   <div className="flex items-center gap-2">
                     <div className={cn("w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]", stage.dotColor, stage.dotColor.replace('bg-', 'text-'))}></div>
-                    <span className="text-sm font-semibold text-zinc-200">{stage.label}</span>
+                    <span className="text-sm font-semibold text-zinc-800">{stage.label}</span>
                   </div>
-                  <span className="text-xs font-medium text-zinc-400 bg-zinc-900 px-2 py-1 rounded-full border border-zinc-800">
+                  <span className="text-xs font-medium text-zinc-500 bg-white px-2 py-1 rounded-full border border-zinc-200">
                     {stageLeads.length}
                   </span>
                 </div>
@@ -134,10 +136,10 @@ export function LeadsView() {
                         onDragStart={(e) => {
                           e.dataTransfer.setData('cardId', lead.id!);
                         }}
-                        className="bg-zinc-900/60 backdrop-blur-md border border-zinc-700/50 rounded-xl p-4 hover:border-accent hover:shadow-[0_0_15px_rgba(151,251,46,0.15)] transition-all shadow-sm group cursor-grab active:cursor-grabbing"
+                        className="bg-white/60 backdrop-blur-md border border-zinc-300/50 rounded-xl p-4 hover:border-accent hover:shadow-[0_0_15px_rgba(215,254,3,0.15)] transition-all shadow-sm group cursor-grab active:cursor-grabbing"
                       >
                         <div className="flex items-start justify-between mb-3">
-                          <h4 className="text-sm font-medium text-white group-hover:text-accent transition-colors">{lead.name}</h4>
+                          <h4 className="text-sm font-medium text-black group-hover:text-accent transition-colors">{lead.name}</h4>
                           <div className="relative">
                             <button 
                               type="button"
@@ -145,7 +147,7 @@ export function LeadsView() {
                                 e.stopPropagation();
                                 setActiveDropdownLeadId(activeDropdownLeadId === lead.id ? null : lead.id!);
                               }}
-                              className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+                              className="text-zinc-500 hover:text-black p-1 rounded-lg hover:bg-zinc-100 transition-colors cursor-pointer"
                               title="Mover de etapa"
                             >
                               <MoreVertical className="w-4 h-4" />
@@ -160,7 +162,7 @@ export function LeadsView() {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: 10 }}
                                     transition={{ duration: 0.3, ease: 'easeOut' }}
-                                    className="absolute right-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden min-w-[180px]"
+                                    className="absolute right-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-sm z-40 py-1 overflow-hidden min-w-[180px]"
                                     style={{ transformOrigin: 'top right' }}
                                   >
                                     {STAGES.map(stage => (
@@ -175,8 +177,8 @@ export function LeadsView() {
                                         className={cn(
                                           "w-full text-left px-4 py-2.5 text-xs transition-colors flex items-center justify-between cursor-pointer",
                                           lead.status === stage.id
-                                            ? "text-accent font-semibold hover:bg-zinc-900/40"
-                                            : "text-zinc-300 hover:bg-zinc-900"
+                                            ? "text-accent font-semibold hover:bg-white/40"
+                                            : "text-zinc-700 hover:bg-white"
                                         )}
                                       >
                                         <span>{stage.label}</span>
@@ -190,30 +192,30 @@ export function LeadsView() {
                         </div>
 
                         <div className="space-y-2 mb-4">
-                          <div className="flex items-center gap-2 text-xs text-zinc-400">
+                          <div className="flex items-center gap-2 text-xs text-zinc-500">
                             <Mail className="w-3 h-3 shrink-0" />
                             <span className="truncate">{lead.email}</span>
                           </div>
                           {lead.phone && (
-                            <div className="flex items-center gap-2 text-xs text-zinc-400">
+                            <div className="flex items-center gap-2 text-xs text-zinc-500">
                               <Phone className="w-3 h-3 shrink-0" />
                               <span className="truncate">{lead.phone}</span>
                             </div>
                           )}
                           {lead.message && (
-                            <div className="mt-3 text-xs text-zinc-500 bg-zinc-950/80 p-2.5 rounded-lg border border-zinc-800/80 line-clamp-3">
+                            <div className="mt-3 text-xs text-zinc-500 bg-white p-2.5 rounded-lg border border-zinc-200/80 line-clamp-3">
                               {lead.message}
                             </div>
                           )}
                         </div>
 
-                        <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-800/50">
+                        <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-200/80">
                           <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-medium">
                             <Clock className="w-3 h-3" />
                             {new Date(lead.createdAt).toLocaleDateString()}
                           </div>
                           <button 
-                            onClick={() => handleDelete(lead.id!)}
+                            onClick={() => setLeadToDeleteId(lead.id!)}
                             className="text-zinc-600 hover:text-red-400 transition-colors p-1 opacity-0 group-hover:opacity-100 cursor-pointer"
                             title="Excluir Lead"
                           >
@@ -229,6 +231,19 @@ export function LeadsView() {
           })}
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={leadToDeleteId !== null}
+        title="Excluir Lead"
+        message="Tem certeza que deseja excluir este lead? Esta ação não pode ser desfeita."
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        variant="danger"
+        onConfirm={() => {
+          if (leadToDeleteId) handleDelete(leadToDeleteId);
+        }}
+        onCancel={() => setLeadToDeleteId(null)}
+      />
     </div>
   );
 }

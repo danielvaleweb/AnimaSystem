@@ -58,7 +58,7 @@ export function PortfolioPage() {
   return (
     <div className="min-h-screen bg-[#0a1007] font-sans pb-24 relative overflow-hidden text-white">
       {/* Background glow effects */}
-      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#97fb2e]/10 blur-[120px] rounded-full pointer-events-none" />
+      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#D7FE03]/10 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-[#5fc2fe]/10 blur-[120px] rounded-full pointer-events-none" />
 
       {/* Header */}
@@ -82,7 +82,7 @@ export function PortfolioPage() {
           {clients.map((client) => (
             <div 
               key={client.id}
-              className="group relative bg-[#0f150d] rounded-3xl border border-white/5 overflow-hidden hover:border-[#97fb2e]/50 transition-colors duration-500"
+              className="group relative bg-[#0f150d] rounded-3xl border border-white/5 overflow-hidden hover:border-[#D7FE03]/50 transition-colors duration-500"
             >
               {/* Image Header */}
               <div className="aspect-[4/3] bg-zinc-900 relative overflow-hidden border-b border-white/5">
@@ -98,7 +98,7 @@ export function PortfolioPage() {
               <div className="p-8">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-2xl font-bold font-display tracking-tight text-white">{client.name}</h3>
-                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/10 group-hover:bg-[#97fb2e] group-hover:text-black group-hover:border-[#97fb2e] transition-all">
+                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/10 group-hover:bg-[#D7FE03] group-hover:text-black group-hover:border-[#D7FE03] transition-all">
                     <ExternalLink className="w-4 h-4" />
                   </div>
                 </div>

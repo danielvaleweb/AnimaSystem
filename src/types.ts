@@ -22,11 +22,12 @@ export interface AlertData {
   severity: 'high' | 'medium' | 'low';
 }
 
-export type ViewType = 'landing' | 'dashboard' | 'clients' | 'client-detail' | 'finance' | 'tickets' | 'monitor' | 'audit' | 'settings' | 'leads';
+export type ViewType = 'landing' | 'dashboard' | 'clients' | 'client-detail' | 'finance' | 'tickets' | 'monitor' | 'audit' | 'settings' | 'leads' | 'colab-auth' | 'customization' | 'investments' | 'agenda';
 
 export interface TransactionData {
   id?: string;
   ownerId: string;
+  title?: string; // Título da transação
   type: 'entrada' | 'saida';
   clientName: string; // Describe entry name or client name
   amount: number;
@@ -42,7 +43,7 @@ export interface ClientData {
   name: string;
   logoInitials: string;
   responsible: string;
-  plan: 'Starter' | 'Pro' | 'Enterprise';
+  plan: 'Nenhum' | 'Starter' | 'Pro' | 'Enterprise';
   domain: string;
   projectName?: string;
   firebaseProjectId: string;
@@ -52,7 +53,9 @@ export interface ClientData {
   monthlyValue: number;
   dueDate: number;
   status: 'active' | 'suspended' | 'trial' | 'ended' | 'developing';
+  trialEndDate?: string;
   cnpj?: string;
+  email?: string;
   website?: string;
   hireDate?: string;
   endDate?: string;
@@ -64,8 +67,17 @@ export interface ClientData {
   neighborhood?: string;
   complement?: string;
   logoUrl?: string;
+  companyRazaoSocial?: string;
+  companyCnpj?: string;
+  companyPhone?: string;
+  companyEmail?: string;
+  companyAddress?: string;
+  companyInscricaoEstadual?: string;
   monitorCollections?: { id: string; label: string; collectionPath: string; readWeight: number; writeWeight: number }[];
   lastMetricsUpdate?: string;
   lastGcpMetrics?: any;
   lastRealMetrics?: any;
+  gcpBillingCost?: number;
+  gcpBillingPeriod?: string;
+  gcpBillingLastSync?: string;
 }

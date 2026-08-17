@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { 
   Database, HardDrive, Users, Zap, Globe, 
-  CheckCircle2, AlertTriangle, XOctagon, Activity, Server, Clock, RefreshCw, ChevronDown
+  CheckCircle2, AlertTriangle, XOctagon, Activity, Server, Clock, RefreshCw, Rocket, Hand, Power, Code, ChevronDown,
+  Upload, FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../utils';
@@ -58,11 +59,14 @@ const formatRelativeTime = (dateString?: string): string => {
 
 type ServiceStatus = 'online' | 'warning' | 'critical';
 
-export function MonitorView() {
+export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string) => void }) {
   const [pulse, setPulse] = useState(false);
   const [clients, setClients] = useState<ClientData[]>([]);
-  const [selectedClient, setSelectedClient] = useState<ClientData | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const selectedClient = clients.find(c => c.id === selectedClientId) || clients[0] || null;
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [isTrialModalOpen, setIsTrialModalOpen] = useState(false);
+  const [trialEndDate, setTrialEndDate] = useState('');
   const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
   
   const [realMetrics, setRealMetrics] = useState<({ label: string; count: number; readWeight: number; writeWeight: number })[]>([]);
@@ -72,6 +76,12 @@ export function MonitorView() {
   const [debugMode, setDebugMode] = useState(false);
   const [discoveryResults, setDiscoveryResults] = useState<any[] | null>(null);
   const [isDiscovering, setIsDiscovering] = useState(false);
+  const [bqProjectId, setBqProjectId] = useState('');
+  const [bqDatasetId, setBqDatasetId] = useState('');
+  const [bqTableId, setBqTableId] = useState('');
+  const [isBqSyncing, setIsBqSyncing] = useState(false);
+  const [bqError, setBqError] = useState('');
+  const [bqResult, setBqResult] = useState<any>(null);
 
   const [consoleData, setConsoleData] = useState({
      reads: 0,
@@ -91,7 +101,17 @@ export function MonitorView() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [gcpDiagnostic, setGcpDiagnostic] = useState<any>(null);
 
-  const [timeRange, setTimeRange] = useState<'30d' | '7d' | '1d' | 'custom'>('30d');
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [parsedCsvRecords, setParsedCsvRecords] = useState<{ projectName: string; projectId: string; cost: number; originalCostString: string; matchedClientId?: string; matchedClientName?: string }[]>([]);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvPeriod, setCsvPeriod] = useState("");
+  const [csvSuccessCount, setCsvSuccessCount] = useState<number | null>(null);
+
+  // BigQuery automated sync states
+  const [billingSyncTab, setBillingSyncTab] = useState<'csv' | 'bigquery'>('csv');
+
+
+  const [timeRange, setTimeRange] = useState<'30d' | '7d' | '1d' | 'custom'>('1d');
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
 
@@ -120,12 +140,48 @@ export function MonitorView() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClientData));
       setClients(data);
-      if (data.length > 0 && !selectedClient) {
-        setSelectedClient(data[0]);
-      }
     });
     return () => unsubscribe();
-  }, [selectedClient]);
+  }, []);
+
+  useEffect(() => {
+    if (clients.length > 0 && !selectedClientId) {
+      setSelectedClientId(clients[0].id);
+    }
+  }, [clients, selectedClientId]);
+
+
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+
+  const handleUpdateStatus = async (newStatus: 'active' | 'suspended' | 'ended' | 'trial' | 'developing') => {
+    if (!selectedClient) return;
+    if (newStatus === 'trial') {
+      setIsTrialModalOpen(true);
+      setIsStatusDropdownOpen(false);
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'clients', selectedClient.id), {
+        status: newStatus,
+        trialEndDate: null
+      });
+      setIsStatusDropdownOpen(false);
+    } catch (err) {
+      console.error("Error updating client status:", err);
+      setErrorMsg("Erro ao atualizar status do cliente.");
+    }
+  };
+
+  const handleConfirmTrial = async () => {
+    if (!selectedClient || !trialEndDate) return;
+    try {
+      await updateDoc(doc(db, 'clients', selectedClient.id), { status: 'trial', trialEndDate });
+      setIsTrialModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Erro ao atualizar status para trial.');
+    }
+  };
 
   const runDiscovery = async () => {
     if (!selectedClient?.firebaseProjectId) {
@@ -359,154 +415,303 @@ export function MonitorView() {
     }
   };
 
+  const calculateTotalCost = () => {
+    if (!gcpMetrics) return { currentBRL: 0, projectedBRL: 0 };
+    
+    const USD_TO_BRL = 5.20;
+    
+    // Reads
+    const readsVal = gcpMetrics.reads_billable?.value || gcpMetrics.reads_ops?.value || 0;
+    const readsAfterFree = Math.max(0, readsVal - 50000);
+    const readsCostUSD = (readsAfterFree / 100000) * 0.036;
+    
+    // Writes
+    const writesVal = gcpMetrics.writes_billable?.value || gcpMetrics.writes_ops?.value || 0;
+    const writesAfterFree = Math.max(0, writesVal - 20000);
+    const writesCostUSD = (writesAfterFree / 100000) * 0.108;
+    
+    // Firestore Storage
+    const fsStorageGB = (gcpMetrics.storageBytes?.value || 0) / 1024 / 1024 / 1024;
+    const fsStorageAfterFree = Math.max(0, fsStorageGB - 1);
+    const fsStorageCostUSD = fsStorageAfterFree * 0.108;
+    
+    // Cloud Storage
+    const csVal1 = gcpMetrics.cloudStorageBytes?.value || 0;
+    const csVal2 = gcpMetrics.cloudStorageBytesV2?.value || 0;
+    const csFinalVal = Math.max(csVal1, csVal2);
+    const csStorageGB = csFinalVal / 1024 / 1024 / 1024;
+    const csStorageAfterFree = Math.max(0, csStorageGB - 5);
+    const csStorageCostUSD = csStorageAfterFree * 0.026;
+    
+    const currentUSD = readsCostUSD + writesCostUSD + fsStorageCostUSD + csStorageCostUSD;
+    const currentBRL = currentUSD * USD_TO_BRL;
+    
+    // Project 30 days based on the selected timeRange
+    let multiplier = 1;
+    if (timeRange === '7d') multiplier = 30 / 7;
+    else if (timeRange === '1d') multiplier = 30;
+    
+    const projectedBRL = currentBRL * multiplier;
+    
+    return {
+      currentBRL,
+      projectedBRL: Math.max(currentBRL, projectedBRL)
+    };
+  };
+
+  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setCsvError(null);
+    setParsedCsvRecords([]);
+    setCsvSuccessCount(null);
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        if (!text) {
+          setCsvError("Arquivo vazio.");
+          return;
+        }
+
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length < 2) {
+          setCsvError("O arquivo CSV precisa conter pelo menos um cabeçalho e uma linha de dados.");
+          return;
+        }
+
+        // Parse header row to find column indexes
+        const header = lines[0].split(/[;,\t]/).map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+        
+        // Find project ID column
+        let projectIdIdx = header.findIndex(h => h.includes('id do projeto') || h.includes('project id') || h.includes('id_projeto') || h.includes('project_id'));
+        // Find project name column
+        let projectNameIdx = header.findIndex(h => h.includes('projeto') || h.includes('project') || h.includes('nome_projeto'));
+        // Find cost column (Subtotal, Custo de uso, Total, Cost)
+        let costIdx = header.findIndex(h => h.includes('custo de uso') || h.includes('subtotal') || h.includes('total') || h.includes('custo') || h.includes('cost') || h.includes('uso') || h.includes('valor'));
+
+        // Fallbacks for standard GCP billing exports
+        if (projectIdIdx === -1) {
+          projectIdIdx = header.findIndex(h => h.includes('id') || h.includes('project'));
+        }
+        if (projectNameIdx === -1) {
+          projectNameIdx = 0; // standard first column is name
+        }
+        if (costIdx === -1) {
+          costIdx = header.findIndex(h => h.includes('custo') || h.includes('total') || h.includes('subtotal') || h.includes('valor'));
+        }
+
+        if (projectIdIdx === -1 || costIdx === -1) {
+          setCsvError(`Não foi possível mapear as colunas obrigatórias automaticamente. Cabeçalhos encontrados: [${header.slice(0, 5).join(', ')}...]. Certifique-se de exportar o relatório de faturamento agrupado por 'Projeto' com a coluna 'ID do projeto'.`);
+          return;
+        }
+
+        const records: typeof parsedCsvRecords = [];
+
+        // Parse data rows
+        for (let i = 1; i < lines.length; i++) {
+          let cols: string[] = [];
+          const line = lines[i];
+          
+          const separator = lines[0].includes(';') ? ';' : lines[0].includes('\t') ? '\t' : ',';
+          
+          let insideQuotes = false;
+          let currentField = '';
+          for (let charIndex = 0; charIndex < line.length; charIndex++) {
+            const char = line[charIndex];
+            if (char === '"' || char === "'") {
+              insideQuotes = !insideQuotes;
+            } else if (char === separator && !insideQuotes) {
+              cols.push(currentField.trim().replace(/^["']|["']$/g, ''));
+              currentField = '';
+            } else {
+              currentField += char;
+            }
+          }
+          cols.push(currentField.trim().replace(/^["']|["']$/g, ''));
+
+          if (cols.length <= Math.max(projectIdIdx, costIdx)) continue;
+
+          const rawProjectId = cols[projectIdIdx] || '';
+          const rawProjectName = cols[projectNameIdx] || '';
+          const rawCost = cols[costIdx] || '';
+
+          if (!rawProjectId) continue;
+
+          // Clean cost string (e.g. "R$ 0,08" -> 0.08)
+          let cleanCostStr = rawCost.replace(/R\$/g, '').replace(/\$/g, '').replace(/\s/g, '');
+          if (cleanCostStr.includes(',') && !cleanCostStr.includes('.')) {
+            cleanCostStr = cleanCostStr.replace(',', '.');
+          } else if (cleanCostStr.includes('.') && cleanCostStr.includes(',')) {
+            cleanCostStr = cleanCostStr.replace(/\./g, '').replace(',', '.');
+          }
+          
+          const costVal = parseFloat(cleanCostStr);
+          if (isNaN(costVal)) continue;
+
+          // Attempt to match with local client
+          const matchedClient = clients.find(c => 
+            c.firebaseProjectId?.trim().toLowerCase() === rawProjectId.trim().toLowerCase() ||
+            c.name?.trim().toLowerCase() === rawProjectName.trim().toLowerCase()
+          );
+
+          records.push({
+            projectName: rawProjectName,
+            projectId: rawProjectId,
+            cost: costVal,
+            originalCostString: rawCost,
+            matchedClientId: matchedClient?.id,
+            matchedClientName: matchedClient?.name
+          });
+        }
+
+        if (records.length === 0) {
+          setCsvError("Nenhuma linha de cobrança válida pôde ser extraída do arquivo.");
+        } else {
+          setParsedCsvRecords(records);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setCsvError("Erro desconhecido ao processar o arquivo CSV.");
+      }
+    };
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const confirmCsvSync = async () => {
+    if (parsedCsvRecords.length === 0) return;
+    
+    let count = 0;
+    for (const record of parsedCsvRecords) {
+      if (record.matchedClientId) {
+        try {
+          await updateDoc(doc(db, 'clients', record.matchedClientId), {
+            gcpBillingCost: record.cost,
+            gcpBillingPeriod: csvPeriod || 'Mês atual',
+            gcpBillingLastSync: new Date().toISOString()
+          });
+          count++;
+        } catch (err) {
+          console.error(`Erro ao sincronizar cliente ${record.matchedClientName}:`, err);
+        }
+      }
+    }
+    setCsvSuccessCount(count);
+    setTimeout(() => {
+      setIsCsvModalOpen(false);
+      setParsedCsvRecords([]);
+      setCsvSuccessCount(null);
+      setCsvPeriod("");
+    }, 3000);
+  };
+
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="flex flex-col h-full space-y-14">
       
-      {/* NOC Header */}
-      <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-4 sm:p-6 lg:p-8 flex flex-col xl:flex-row gap-6 items-stretch xl:items-center justify-between relative">
-        <div className="absolute top-0 left-6 right-6 h-[2px] bg-gradient-to-r from-emerald-400 via-accent to-emerald-400 rounded-b"></div>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:gap-5">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center relative shrink-0 self-center">
-            <Server className="w-6 sm:w-8 h-6 sm:h-8 text-accent relative z-10" />
-            <div className={cn("absolute inset-0 bg-accent/20 rounded-2xl transition-opacity duration-1000", pulse ? "opacity-100" : "opacity-0")}></div>
-          </div>
-          <div className="text-center sm:text-left min-w-0">
-             <div className="flex items-center gap-3 justify-center sm:justify-start">
-               <h2 className="font-display text-xl sm:text-2xl font-bold text-zinc-100 leading-tight">Monitoramento de Consumo (NOC)</h2>
-             </div>
-             <p className="text-zinc-400 text-xs sm:text-sm mt-1 whitespace-normal">
-               Status e limites em tempo real da infraestrutura dos clientes
-             </p>
+      {/* Greeting Row Pattern */}
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
+        <div className="flex items-center gap-5 text-left">
+          <button 
+            onClick={() => onNavigate?.('dashboard')}
+            className="w-12 h-12 rounded-full bg-transparent border border-zinc-200/80 flex items-center justify-center text-zinc-500 hover:bg-white hover:text-black transition-all cursor-pointer shrink-0"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="1.5">
+              <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <div>
+            <h1 className="text-[40px] font-normal text-zinc-900 tracking-tight whitespace-nowrap">
+              Monitoramento
+            </h1>
           </div>
         </div>
 
         <div className="flex flex-col items-stretch xl:items-end gap-3 shrink-0">
           <div className="flex flex-col sm:flex-row gap-2 lg:gap-4 items-stretch sm:items-center w-full justify-start xl:justify-end">
-              {/* Custom Client Selector (Anchored Overlay) */}
-              <div className="relative w-full sm:w-52">
+              
+              {/* Status Toggle Dropdown */}
+              <div className="relative w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => {
-                    setIsClientDropdownOpen(!isClientDropdownOpen);
+                    setIsStatusDropdownOpen(!isStatusDropdownOpen);
+                    setIsClientDropdownOpen(false);
                     setIsTimeDropdownOpen(false);
                   }}
-                  className="flex items-center justify-between gap-2 bg-zinc-950 border border-zinc-800 text-zinc-200 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-700 w-full cursor-pointer text-left select-none"
-                >
-                  <span className="truncate">{selectedClient?.name || 'Nenhum cliente...'}</span>
-                  <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isClientDropdownOpen && "rotate-180")} />
-                </button>
-
-                <AnimatePresence>
-                  {isClientDropdownOpen && (
-                    <>
-                      {/* Close overlay on click away */}
-                      <div className="fixed inset-0 z-30" onClick={() => setIsClientDropdownOpen(false)}></div>
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 10 }}
-                        transition={{ duration: 0.3, ease: 'easeOut' }}
-                        className="absolute left-0 right-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden p-anchored-overlay-enter-active max-h-60 overflow-y-auto"
-                        style={{ transformOrigin: 'top' }}
-                      >
-                        {clients.length === 0 ? (
-                          <div className="px-4 py-2.5 text-sm text-zinc-400 italic">Nenhum cliente...</div>
-                        ) : (
-                          clients.map(client => (
-                            <button
-                              key={client.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedClient(client);
-                                setIsClientDropdownOpen(false);
-                              }}
-                              className={cn(
-                                "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
-                                selectedClient?.id === client.id 
-                                  ? "text-accent font-semibold hover:bg-zinc-900/40" 
-                                  : "text-zinc-300 hover:bg-zinc-900"
-                              )}
-                            >
-                              <span className="truncate">{client.name}</span>
-                            </button>
-                          ))
-                        )}
-                      </motion.div>
-                    </>
+                  className={cn(
+                    "flex items-center justify-between gap-2 border text-sm rounded-xl px-4 py-2.5 focus:outline-none w-full sm:w-auto min-w-[140px] cursor-pointer text-left select-none font-semibold transition-colors",
+                    selectedClient?.status === 'active' ? "bg-accent text-black border-accent hover:bg-[#bbf000]" :
+                    selectedClient?.status === 'suspended' ? "bg-rose-500 text-white border-rose-500 hover:bg-rose-600" :
+                    selectedClient?.status === 'ended' ? "bg-zinc-500 text-white border-zinc-500 hover:bg-zinc-600" :
+                    selectedClient?.status === 'trial' ? "bg-blue-500 text-white border-blue-500 hover:bg-blue-600" :
+                    selectedClient?.status === 'developing' ? "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" :
+                    "bg-white border-zinc-200 text-zinc-800 hover:bg-zinc-50"
                   )}
-                </AnimatePresence>
-              </div>
-              
-              {/* Custom TimeRange Selector (Anchored Overlay) */}
-              <div className="relative w-full sm:w-44">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsTimeDropdownOpen(!isTimeDropdownOpen);
-                    setIsClientDropdownOpen(false);
-                  }}
-                  className="flex items-center justify-between gap-2 bg-zinc-950 border border-zinc-800 text-zinc-200 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-700 cursor-pointer text-left select-none w-full"
                 >
-                  <span className="truncate text-left block w-full">
-                    {timeRange === '30d' ? 'Últimos 30 Dias' :
-                     timeRange === '7d' ? 'Últimos 7 Dias' :
-                     timeRange === '1d' ? 'Últimas 24h' : 'Personalizado'}
+                  <span className="truncate flex items-center gap-1.5">
+                    {selectedClient?.status === 'active' && <><Rocket className="w-4 h-4" /> Ativo</>}
+                    {selectedClient?.status === 'suspended' && <><Hand className="w-4 h-4" /> Suspenso</>}
+                    {selectedClient?.status === 'ended' && <><Power className="w-4 h-4" /> Encerrado</>}
+                    {selectedClient?.status === 'trial' && <><Clock className="w-4 h-4" /> {selectedClient?.trialEndDate ? 'Trial - ' + Math.max(0, Math.ceil((new Date(selectedClient.trialEndDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24))) + ' dias restantes' : 'Trial'}</>}
+                    {selectedClient?.status === 'developing' && <><Code className="w-4 h-4" /> Em construção</>}
+                    {!selectedClient?.status && 'Status'}
                   </span>
-                  <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isTimeDropdownOpen && "rotate-180")} />
+                  <ChevronDown className={cn("w-4 h-4 transition-transform duration-200 shrink-0", isStatusDropdownOpen && "rotate-180")} />
                 </button>
-
                 <AnimatePresence>
-                  {isTimeDropdownOpen && (
+                  {isStatusDropdownOpen && (
                     <>
-                      {/* Close overlay on click away */}
-                      <div className="fixed inset-0 z-30" onClick={() => setIsTimeDropdownOpen(false)}></div>
+                      <div className="fixed inset-0 z-30" onClick={() => setIsStatusDropdownOpen(false)}></div>
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 10 }}
                         transition={{ duration: 0.3, ease: 'easeOut' }}
-                        className="absolute left-0 sm:left-auto sm:right-0 mt-2 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-40 py-1 overflow-hidden w-full sm:min-w-[170px] p-anchored-overlay-enter-active"
+                        className="absolute left-0 sm:left-auto sm:right-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-sm z-40 py-1 overflow-hidden w-full sm:min-w-[160px] p-anchored-overlay-enter-active"
                         style={{ transformOrigin: 'top' }}
                       >
-                        {[
-                          { val: '30d', label: 'Últimos 30 Dias' },
-                          { val: '7d', label: 'Últimos 7 Dias' },
-                          { val: '1d', label: 'Últimas 24h' },
-                          { val: 'custom', label: 'Personalizado' }
-                        ].map(item => (
-                          <button
-                            key={item.val}
-                            type="button"
-                            onClick={() => {
-                              setTimeRange(item.val as any);
-                              setIsTimeDropdownOpen(false);
-                            }}
-                            className={cn(
-                              "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
-                              timeRange === item.val
-                                ? "text-accent font-semibold hover:bg-zinc-900/40"
-                                : "text-zinc-300 hover:bg-zinc-900"
-                            )}
-                          >
-                            <span>{item.label}</span>
-                          </button>
-                        ))}
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus('active')}
+                          className="w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-50 flex items-center gap-2 text-zinc-700 font-medium cursor-pointer"
+                        >
+                          <Rocket className="w-4 h-4 text-accent" /> Ativo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus('trial')}
+                          className="w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-50 flex items-center gap-2 text-zinc-700 font-medium cursor-pointer"
+                        >
+                          <Clock className="w-4 h-4 text-blue-500" /> Trial
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus('developing')}
+                          className="w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-50 flex items-center gap-2 text-zinc-700 font-medium cursor-pointer"
+                        >
+                          <Code className="w-4 h-4 text-purple-500" /> Em construção
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus('suspended')}
+                          className="w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-50 flex items-center gap-2 text-zinc-700 font-medium cursor-pointer"
+                        >
+                          <Hand className="w-4 h-4 text-rose-500" /> Suspenso
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus('ended')}
+                          className="w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-zinc-50 flex items-center gap-2 text-zinc-700 font-medium cursor-pointer"
+                        >
+                          <Power className="w-4 h-4 text-zinc-500" /> Encerrado
+                        </button>
                       </motion.div>
                     </>
                   )}
                 </AnimatePresence>
-              </div>
-
-              <button
-                 type="button"
-                 onClick={fetchClientMetrics}
-                 disabled={isRefreshing || (!selectedClient?.firebaseProjectId && !selectedClient?.parsedFirebaseConfig)}
-                 className="flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold bg-[#97fb2e] hover:bg-[#85df29] text-[#0a1007] rounded-xl transition-all shadow-[0_0_20px_rgba(151,251,46,0.15)] disabled:opacity-50 cursor-pointer w-full sm:w-auto shrink-0"
-               >
-                 <RefreshCw className={cn("w-4 h-4 shrink-0", isRefreshing && "animate-spin")} />
-                 <span>Atualizar</span>
-               </button>
-          </div>
+              </div></div>
           
           {timeRange === 'custom' && (
              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-1 w-full justify-end">
@@ -514,7 +719,7 @@ export function MonitorView() {
                    type="date"
                    value={customStart}
                    onChange={(e) => setCustomStart(e.target.value)}
-                   className="bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-zinc-700 w-full sm:w-auto"
+                   className="bg-white border border-zinc-200 text-zinc-800 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-zinc-300 w-full sm:w-auto"
                    style={{ colorScheme: 'dark' }}
                 />
                 <span className="text-zinc-500 text-xs text-center">até</span>
@@ -522,7 +727,7 @@ export function MonitorView() {
                    type="date"
                    value={customEnd}
                    onChange={(e) => setCustomEnd(e.target.value)}
-                   className="bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-zinc-700 w-full sm:w-auto"
+                   className="bg-white border border-zinc-200 text-zinc-800 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-zinc-300 w-full sm:w-auto"
                    style={{ colorScheme: 'dark' }}
                 />
              </div>
@@ -530,74 +735,230 @@ export function MonitorView() {
         </div>
       </div>
 
+      {/* Ca
       {/* Cards de Status do Topo (NOC Hub Widgets) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Card 1: Status Geral */}
-        <div className="bg-[#101112] border border-zinc-800/50 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
-          <span className="text-zinc-500 text-xs font-medium mb-1.5 block">Status Geral</span>
-          <div className="flex items-center gap-2 text-[#97fb2e] font-extrabold text-lg sm:text-xl">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#97fb2e] animate-pulse shrink-0"></span>
-            Operacional
-          </div>
+        {/* Card 1: Custo Google Cloud */}
+        <div className="bg-white border border-zinc-200/80 rounded-2xl p-5 flex flex-col justify-center min-h-[110px] relative overflow-hidden group select-none">
+          <span className="text-zinc-500 text-xs font-medium mb-1.5 block flex items-center justify-between">
+            <span>Custo da Infra (GCP)</span>
+            {selectedClient?.firebaseProjectId && (
+              <span className="text-[10px] text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">Faturamento</span>
+            )}
+          </span>
+          {(() => {
+            const costs = calculateTotalCost();
+            const realBillingCost = selectedClient?.gcpBillingCost;
+            return (
+              <div className="space-y-1.5">
+                {realBillingCost !== undefined ? (
+                  <div>
+                    <div className="text-emerald-600 font-extrabold text-xl font-mono leading-none flex items-baseline gap-1.5">
+                      <span>R$ {realBillingCost.toFixed(2)}</span>
+                      <span className="text-[10px] text-emerald-500 font-medium bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded font-sans uppercase">Fatura Real</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-1 flex flex-col gap-0.5">
+                      <div>
+                        <span className="text-zinc-500">Período:</span> {selectedClient?.gcpBillingPeriod || 'Mês atual'}
+                      </div>
+                      <div>
+                        <span className="text-zinc-500">Estimado real-time:</span> <span className="text-zinc-700 font-mono">R$ {costs.currentBRL.toFixed(4)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-emerald-600 font-extrabold text-lg sm:text-xl font-mono">
+                      R$ {costs.currentBRL.toFixed(4)}
+                    </div>
+                    {costs.projectedBRL > costs.currentBRL && (
+                      <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1">
+                        <span className="text-zinc-500">Previsto (Mês):</span>
+                        <span className="text-emerald-500 font-medium font-mono">R$ {costs.projectedBRL.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1">
+                      <span>(Sem sincronização de faturamento CSV)</span>
+                    </div>
+                  </div>
+                )}
+                {!selectedClient?.firebaseProjectId && (
+                  <div className="text-[10px] text-zinc-500">
+                    Sem Firebase Project ID
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
-        {/* Card 2: Última Checagem */}
-        <div className="bg-[#101112] border border-zinc-800/50 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
-          <span className="text-zinc-500 text-xs font-medium mb-1.5 block">Última checagem</span>
-          <div className="flex items-center gap-2 text-zinc-100 font-bold text-sm sm:text-base" title={selectedClient?.lastMetricsUpdate ? new Date(selectedClient.lastMetricsUpdate).toLocaleString('pt-BR') : undefined}>
-            <Clock className="w-4 h-4 text-zinc-400 shrink-0" />
-            <span>
+        {/* Card 2: Última checagem */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
+          <span className="text-zinc-400 text-xs font-medium mb-1.5 block">Última checagem</span>
+          <div className="text-white font-bold text-lg flex items-center gap-2" title={selectedClient?.lastMetricsUpdate ? new Date(selectedClient.lastMetricsUpdate).toLocaleString('pt-BR') : undefined}>
+            <Clock className="w-4 h-4 text-zinc-500 shrink-0" />
+            <span className="truncate">
               {selectedClient?.lastMetricsUpdate ? formatRelativeTime(selectedClient.lastMetricsUpdate) : 'Agora'}
             </span>
           </div>
         </div>
 
         {/* Card 3: Plano Contratado */}
-        <div className="bg-[#101112] border border-zinc-800/50 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
-          <span className="text-zinc-500 text-xs font-medium mb-1.5 block">Plano Contratado</span>
-          <div className="flex items-center gap-2 text-white font-extrabold text-lg sm:text-xl">
-            <Zap className="w-4 h-4 text-[#97fb2e] shrink-0" />
-            <span className="truncate">{selectedClient?.plan || 'Starter'}</span>
+        <div className="bg-[#D7FE03] border border-transparent rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
+          <span className="text-black/60 text-xs font-medium mb-1.5 block">Plano Contratado</span>
+          <div className="text-black font-bold text-lg flex items-center gap-2">
+            <Zap className="w-5 h-5 text-black" />
+            <span className="truncate">{selectedClient?.plan || 'Free'}</span>
           </div>
         </div>
 
-        {/* Card 4: Cliente / Projeto Selecionado */}
-        <div className="bg-[#101112] border border-zinc-800/50 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
+        {/* Card 4: Ambiente Ativo */}
+        <div className="bg-white border border-zinc-200/80 rounded-2xl p-5 flex flex-col justify-center min-h-[96px] relative overflow-hidden group select-none">
           <span className="text-zinc-500 text-xs font-medium mb-1.5 block">Ambiente Ativo</span>
-          <div className="text-accent font-extrabold text-sm sm:text-base truncate" title={selectedClient?.name || 'Não selecionado'}>
-            {selectedClient?.name ? selectedClient.name : 'Nenhum'}
+          <div className="text-[#a1c200] font-bold text-lg truncate">
+            {selectedClient?.name}
           </div>
         </div>
       </div>
-
+      
       <div className="flex-1 w-full flex flex-col">
         
         {/* Consumo de Cotas Limits */}
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-4 sm:p-6 lg:p-8 flex flex-col">
+        <div className="bg-white border border-zinc-200/80 rounded-[2rem] p-4 sm:p-6 lg:p-8 flex flex-col">
            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-              <h3 className="font-display text-lg font-bold flex items-center gap-2 text-white">
+              <h3 className="font-display text-lg font-bold flex items-center gap-2 text-black">
                  <Zap className="w-5 h-5 text-accent shrink-0" />
                  <span>Métricas do Google Cloud Monitoring</span>
               </h3>
-              {selectedClient?.firebaseProjectId && gcpMetrics && (
-                 <div className="flex flex-wrap gap-2">
-                   <button 
-                     type="button"
-                     onClick={runDiscovery}
-                     disabled={isDiscovering}
-                     className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors disabled:opacity-50 cursor-pointer"
-                   >
-                      {isDiscovering ? "Buscando..." : "Descobrir Métricas Firestore"}
-                   </button>
-                   <button 
-                     type="button"
-                     onClick={() => setDebugMode(!debugMode)}
-                     className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border cursor-pointer", debugMode ? "bg-accent/20 border-accent/30 text-accent" : "bg-zinc-800/50 border-zinc-700/50 text-zinc-400 hover:text-zinc-200")}
-                   >
-                      Modo Debug {debugMode ? "ON" : "OFF"}
-                   </button>
-                 </div>
-              )}
+              <div className="flex flex-col sm:flex-row flex-wrap items-center gap-2 shrink-0">
+  
+  
+                
+  
+                {/* Custom Client Selector (Anchored Overlay) */}
+                <div className="relative w-full sm:w-52">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsClientDropdownOpen(!isClientDropdownOpen);
+                      setIsTimeDropdownOpen(false);
+                    }}
+                    className="flex items-center justify-between gap-2 bg-white border border-zinc-200 text-zinc-800 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-300 w-full cursor-pointer text-left select-none"
+                  >
+                    <span className="truncate">{selectedClient?.name || 'Nenhum cliente...'}</span>
+                    <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isClientDropdownOpen && "rotate-180")} />
+                  </button>
+                  <AnimatePresence>
+                    {isClientDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsClientDropdownOpen(false)}></div>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          transition={{ duration: 0.3, ease: 'easeOut' }}
+                          className="absolute left-0 right-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-sm z-40 py-1 overflow-hidden p-anchored-overlay-enter-active max-h-60 overflow-y-auto"
+                          style={{ transformOrigin: 'top' }}
+                        >
+                          {clients.length === 0 ? (
+                            <div className="px-4 py-2.5 text-sm text-zinc-500 italic">Nenhum cliente...</div>
+                          ) : (
+                            clients.map(client => (
+                              <button
+                                key={client.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedClientId(client.id);
+                                  setIsClientDropdownOpen(false);
+                                }}
+                                className={cn(
+                                  "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
+                                  selectedClient?.id === client.id
+                                     ? "text-accent font-semibold hover:bg-white/40"
+                                     : "text-zinc-700 hover:bg-white"
+                                )}
+                              >
+                                <span className="truncate">{client.name}</span>
+                              </button>
+                            ))
+                          )}
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>              {/* Custom TimeRange Selector (Anchored Overlay) */}
+                <div className="relative w-full sm:w-44">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTimeDropdownOpen(!isTimeDropdownOpen);
+                      setIsClientDropdownOpen(false);
+                    }}
+                    className="flex items-center justify-between gap-2 bg-white border border-zinc-200 text-zinc-800 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-300 cursor-pointer text-left select-none w-full"
+                  >
+                    <span className="truncate text-left block w-full">
+                      {timeRange === '30d' ? 'Últimos 30 Dias' :
+                       timeRange === '7d' ? 'Últimos 7 Dias' :
+                       timeRange === '1d' ? 'Últimas 24h' : 'Personalizado'}
+                    </span>
+                    <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isTimeDropdownOpen && "rotate-180")} />
+                  </button>
+  
+                  <AnimatePresence>
+                    {isTimeDropdownOpen && (
+                      <>
+                        {/* Close overlay on click away */}
+                        <div className="fixed inset-0 z-30" onClick={() => setIsTimeDropdownOpen(false)}></div>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          transition={{ duration: 0.3, ease: 'easeOut' }}
+                          className="absolute left-0 sm:left-auto sm:right-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-sm z-40 py-1 overflow-hidden w-full sm:min-w-[170px] p-anchored-overlay-enter-active"
+                          style={{ transformOrigin: 'top' }}
+                        >
+                          {[
+                            { val: '30d', label: 'Últimos 30 Dias' },
+                            { val: '7d', label: 'Últimos 7 Dias' },
+                            { val: '1d', label: 'Últimas 24h' },
+                            { val: 'custom', label: 'Personalizado' }
+                          ].map(item => (
+                            <button
+                              key={item.val}
+                              type="button"
+                              onClick={() => {
+                                setTimeRange(item.val as any);
+                                setIsTimeDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
+                                timeRange === item.val
+                                  ? "text-accent font-semibold hover:bg-white/40"
+                                  : "text-zinc-700 hover:bg-white"
+                              )}
+                            >
+                              <span>{item.label}</span>
+                            </button>
+                          ))}
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
+  
+  
+                <button
+                   type="button"
+                   onClick={fetchClientMetrics}
+                   disabled={isRefreshing || (!selectedClient?.firebaseProjectId && !selectedClient?.parsedFirebaseConfig)}
+                   className="flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold bg-[#D7FE03] hover:bg-[#c4e602] text-[#0a1007] rounded-xl transition-all shadow-[0_0_20px_rgba(215,254,3,0.15)] disabled:opacity-50 cursor-pointer w-full sm:w-auto shrink-0"
+                 >
+                   <RefreshCw className={cn("w-4 h-4 shrink-0", isRefreshing && "animate-spin")} />
+                   <span>Atualizar</span>
+                 </button>
+            
+  
+              </div>
            </div>
 
             {!selectedClient?.firebaseProjectId ? (
@@ -612,17 +973,17 @@ export function MonitorView() {
                 <div className="space-y-4">
 
                   {discoveryResults && (
-                    <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl col-span-full overflow-x-auto">
+                    <div className="bg-white border border-zinc-200 p-4 rounded-xl col-span-full overflow-x-auto">
                       <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-zinc-100 flex items-center gap-2">
+                        <h3 className="font-bold text-zinc-900 flex items-center gap-2">
                           <Database className="w-5 h-5 text-blue-500" /> Métricas Descobertas
                         </h3>
-                        <button type="button" onClick={() => setDiscoveryResults(null)} className="text-zinc-500 hover:text-zinc-300 cursor-pointer">
+                        <button type="button" onClick={() => setDiscoveryResults(null)} className="text-zinc-500 hover:text-zinc-700 cursor-pointer">
                           <XOctagon className="w-4 h-4" />
                         </button>
                       </div>
-                      <table className="w-full text-left text-sm text-zinc-300">
-                        <thead className="bg-zinc-900 text-zinc-400 sticky top-0">
+                      <table className="w-full text-left text-sm text-zinc-700">
+                        <thead className="bg-white text-zinc-500 sticky top-0">
                           <tr>
                             <th className="p-3 whitespace-nowrap">metric.type</th>
                             <th className="p-3 whitespace-nowrap">displayName</th>
@@ -632,11 +993,11 @@ export function MonitorView() {
                         </thead>
                         <tbody className="divide-y divide-zinc-800">
                           {discoveryResults.map((m: any, i: number) => (
-                            <tr key={i} className="hover:bg-zinc-900/50">
-                              <td className="p-3 font-mono text-xs break-words break-all text-emerald-400">{m.type}</td>
+                            <tr key={i} className="hover:bg-white/50">
+                              <td className="p-3 font-mono text-xs break-words break-all text-emerald-600">{m.type}</td>
                               <td className="p-3 font-medium whitespace-nowrap">{m.displayName}</td>
                               <td className="p-3 text-zinc-500 text-xs min-w-[300px]">{m.description}</td>
-                              <td className="p-3 font-mono text-xs text-zinc-400">{m.unit}</td>
+                              <td className="p-3 font-mono text-xs text-zinc-500">{m.unit}</td>
                             </tr>
                           ))}
                           {discoveryResults.length === 0 && (
@@ -673,15 +1034,15 @@ export function MonitorView() {
                     }
                     
                     return (
-                    <div key={idx} className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/50">
+                    <div key={idx} className="bg-white p-4 rounded-xl border border-zinc-200/80">
                       <div className="flex justify-between items-center mb-1">
                           <div className="flex items-center gap-2">
-                             <span className="font-medium text-sm text-zinc-300">{item.label}</span>
+                             <span className="font-medium text-sm text-zinc-700">{item.label}</span>
                              {item.freeTier > 0 && (
-                               <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">Isento até {item.freeTier.toLocaleString()}{item.suffix}</span>
+                               <span className="text-[10px] bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded">Isento até {item.freeTier.toLocaleString()}{item.suffix}</span>
                              )}
                           </div>
-                          <span className="font-bold text-lg text-zinc-100">
+                          <span className="font-bold text-lg text-zinc-900">
                             {val.toLocaleString()}
                           </span>
                       </div>
@@ -691,7 +1052,7 @@ export function MonitorView() {
                       )}
 
                       {item.freeTier > 0 && (
-                         <div className="w-full bg-zinc-900 rounded-full h-3 mb-4 overflow-hidden border border-zinc-800 relative mt-2">
+                         <div className="w-full bg-white rounded-full h-3 mb-4 overflow-hidden border border-zinc-200 relative mt-2">
                             <div 
                               className={cn("h-full transition-all duration-500 rounded-full bg-gradient-to-r", progressColorClass)}
                               style={{ width: progressPercent + '%' }}
@@ -700,25 +1061,25 @@ export function MonitorView() {
                       )}
 
                       {item.costPer100k > 0 && (
-                         <div className="flex justify-between items-center text-xs p-2 rounded bg-zinc-900 border border-zinc-800">
+                         <div className="flex justify-between items-center text-xs p-2 rounded bg-white border border-zinc-200">
                             <span className="text-zinc-500">Estimativa de consumo:</span>
                             {estimatedCostBRL > 0 ? (
-                               <span className="text-emerald-400 font-medium">~R$ {estimatedCostBRL.toFixed(4)} BRL</span>
+                               <span className="text-emerald-600 font-medium">~R$ {estimatedCostBRL.toFixed(4)} BRL</span>
                             ) : (
-                               <span className="text-zinc-400 font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]">Dentro do limite gratuito</span>
+                               <span className="text-zinc-500 font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]">Dentro do limite gratuito</span>
                             )}
                          </div>
                       )}
                       
                       {item.key === 'realtime text-zinc-500' && (
-                         <div className="flex justify-between items-center text-xs p-2 rounded bg-zinc-900 border border-zinc-800">
+                         <div className="flex justify-between items-center text-xs p-2 rounded bg-white border border-zinc-200">
                             <span className="text-zinc-500">Estimativa de consumo:</span>
-                            <span className="text-emerald-400 font-medium font-mono">Incluído nas Leituras</span>
+                            <span className="text-emerald-600 font-medium font-mono">Incluído nas Leituras</span>
                          </div>
                       )}
 
                       {debugMode && debugInfo && (
-                          <div className="mt-3 p-3 bg-black/40 rounded border border-zinc-900 overflow-x-auto text-xs text-zinc-400 font-mono space-y-1">
+                          <div className="mt-3 p-3 bg-black/40 rounded border border-zinc-200 overflow-x-auto text-xs text-zinc-500 font-mono space-y-1">
                              <div className="text-emerald-500 font-bold mb-2">=== {item.label} ===</div>
                              <div><span className="text-zinc-500">Nome da métrica:</span> {debugInfo.metricName}</div>
                              <div><span className="text-zinc-500">Filtro utilizado:</span> {debugInfo.request?.filter}</div>
@@ -751,13 +1112,13 @@ export function MonitorView() {
                      }
                      
                      return (
-                     <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/50 mt-4">
+                     <div className="bg-white p-4 rounded-xl border border-zinc-200/80 mt-4">
                        <div className="flex justify-between items-center mb-1">
                           <div className="flex items-center gap-2">
-                             <span className="text-zinc-300 font-medium text-sm">Armazenamento do Banco (Firestore)</span>
-                             <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">Isento até 1 GB</span>
+                             <span className="text-zinc-700 font-medium text-sm">Armazenamento do Banco (Firestore)</span>
+                             <span className="text-[10px] bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded">Isento até 1 GB</span>
                           </div>
-                          <span className="text-zinc-100 font-bold">
+                          <span className="text-zinc-900 font-bold">
                             {(gcpMetrics.storageBytes?.value / 1024 / 1024).toFixed(2)} MB 
                             {gcpMetrics.storageBytes?.value > 0 && <span className="font-normal text-zinc-500 ml-2">({storageValGB.toFixed(4)} GB)</span>}
                           </span>
@@ -767,19 +1128,19 @@ export function MonitorView() {
                          <div className="text-xs text-zinc-600 font-mono break-all mb-3">{gcpMetrics.storageBytes?.metric || 'metric.type="firestore.googleapis.com/storage/data_and_index_storage_bytes"'}</div>
                        )}
 
-                       <div className="w-full bg-zinc-900 rounded-full h-3 mb-4 overflow-hidden border border-zinc-800 relative mt-2">
+                       <div className="w-full bg-white rounded-full h-3 mb-4 overflow-hidden border border-zinc-200 relative mt-2">
                           <div 
                             className={cn("h-full transition-all duration-500 rounded-full bg-gradient-to-r", progressColorClass)}
                             style={{ width: progressPercent + '%' }}
                           />
                        </div>
 
-                       <div className="flex justify-between items-center text-xs p-2 rounded bg-zinc-900 border border-zinc-800">
+                       <div className="flex justify-between items-center text-xs p-2 rounded bg-white border border-zinc-200">
                              <span className="text-zinc-500">Estimativa de consumo:</span>
                              {storageCostBRL > 0 ? (
-                                <span className="text-emerald-400 font-medium font-mono">~R$ {storageCostBRL.toFixed(4)} BRL / mês</span>
+                                <span className="text-emerald-600 font-medium font-mono">~R$ {storageCostBRL.toFixed(4)} BRL / mês</span>
                              ) : (
-                                <span className="text-zinc-400 font-medium font-mono">Dentro do limite gratuito</span>
+                                <span className="text-zinc-500 font-medium font-mono">Dentro do limite gratuito</span>
                              )}
                        </div>
                      </div>
@@ -809,13 +1170,13 @@ export function MonitorView() {
                      }
                      
                      return (
-                     <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/50 mt-4">
+                     <div className="bg-white p-4 rounded-xl border border-zinc-200/80 mt-4">
                        <div className="flex justify-between items-center mb-1">
                           <div className="flex items-center gap-2">
-                             <span className="text-zinc-300 font-medium text-sm">Armazenamento de Arquivos (Storage)</span>
-                             <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">Isento até 5 GB</span>
+                             <span className="text-zinc-700 font-medium text-sm">Armazenamento de Arquivos (Storage)</span>
+                             <span className="text-[10px] bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded">Isento até 5 GB</span>
                           </div>
-                          <span className="text-zinc-100 font-bold">
+                          <span className="text-zinc-900 font-bold">
                             {(finalStorageValue / 1024 / 1024).toFixed(2)} MB 
                             {finalStorageValue > 0 && <span className="font-normal text-zinc-500 ml-2">({cloudStorageValGB.toFixed(4)} GB)</span>}
                           </span>
@@ -825,26 +1186,26 @@ export function MonitorView() {
                          <div className="text-xs text-zinc-600 font-mono break-all mb-3">{activeMetricName || 'metric.type="storage.googleapis.com/storage/total_bytes"'}</div>
                        )}
 
-                       <div className="w-full bg-zinc-900 rounded-full h-3 mb-4 overflow-hidden border border-zinc-800 relative mt-2">
+                       <div className="w-full bg-white rounded-full h-3 mb-4 overflow-hidden border border-zinc-200 relative mt-2">
                           <div 
                             className={cn("h-full transition-all duration-500 rounded-full bg-gradient-to-r", progressColorClass)}
                             style={{ width: progressPercent + '%' }}
                           />
                        </div>
 
-                       <div className="flex justify-between items-center text-xs p-2 rounded bg-zinc-900 border border-zinc-800">
+                       <div className="flex justify-between items-center text-xs p-2 rounded bg-white border border-zinc-200">
                              <span className="text-zinc-500">Estimativa de consumo:</span>
                              {cloudStorageCostBRL > 0 ? (
-                                <span className="text-emerald-400 font-medium font-mono font-mono">~R$ {cloudStorageCostBRL.toFixed(4)} BRL / mês</span>
+                                <span className="text-emerald-600 font-medium font-mono font-mono">~R$ {cloudStorageCostBRL.toFixed(4)} BRL / mês</span>
                              ) : (
-                                <span className="text-zinc-400 font-medium font-mono font-mono">Dentro do limite gratuito</span>
+                                <span className="text-zinc-500 font-medium font-mono font-mono">Dentro do limite gratuito</span>
                              )}
                        </div>
                      </div>
                      );
                   })()}
 
-                  <div className="pt-4 mt-2 border-t border-zinc-800">
+                  <div className="pt-4 mt-2 border-t border-zinc-200">
                     <div className="flex justify-between text-xs text-zinc-500">
                        <span>Última atualização (Timestamp)</span>
                        <span>{new Date(gcpMetrics.lastUpdated).toLocaleString()}</span>
@@ -857,9 +1218,9 @@ export function MonitorView() {
       </div>
 
       {selectedClient && (
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-6 lg:p-8 flex flex-col mt-6">
+        <div className="bg-white border border-zinc-200/80 rounded-[2rem] p-6 lg:p-8 flex flex-col mt-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <h3 className="font-display text-lg font-bold flex items-center gap-2 text-white min-w-0">
+            <h3 className="font-display text-lg font-bold flex items-center gap-2 text-black min-w-0">
               <Server className="w-5 h-5 text-accent shrink-0" />
               <span className="truncate">Configuração do Banco de Dados ({selectedClient.name})</span>
             </h3>
@@ -876,7 +1237,7 @@ export function MonitorView() {
                 <button 
                   type="button"
                   onClick={() => setEditingFirebase(false)}
-                  className="px-4 py-2 bg-transparent hover:bg-zinc-800 text-zinc-400 text-sm font-medium rounded-xl transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-transparent hover:bg-zinc-100 text-zinc-500 text-sm font-medium rounded-xl transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -895,38 +1256,38 @@ export function MonitorView() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-zinc-400 mb-1 block">ID do Projeto</label>
+                  <label className="text-sm font-medium text-zinc-500 mb-1 block">ID do Projeto</label>
                   <input 
                     value={fbProjectId}
                     onChange={(e) => setFbProjectId(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm outline-none focus:border-accent font-mono"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-accent font-mono"
                     placeholder="meu-projeto-123"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-zinc-400 mb-1 block">Nome do DB</label>
+                  <label className="text-sm font-medium text-zinc-500 mb-1 block">Nome do DB</label>
                   <input 
                     value={fbDbName}
                     onChange={(e) => setFbDbName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm outline-none focus:border-accent font-mono"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-accent font-mono"
                     placeholder="(default)"
                   />
                 </div>
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-zinc-400 mb-1 block">Configuração SDK (JSON/JS)</label>
+                  <label className="text-sm font-medium text-zinc-500 mb-1 block">Configuração SDK (JSON/JS)</label>
                   <textarea 
                     value={fbConfig}
                     onChange={(e) => setFbConfig(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 outline-none focus:border-accent font-mono h-32 resize-none text-xs mb-2"
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 outline-none focus:border-accent font-mono h-32 resize-none text-xs mb-2"
                     placeholder="Cole aqui a configuração..."
                   />
                 </div>
                 
-                <div className="bg-zinc-950/50 p-4 border border-zinc-800 rounded-xl">
+                <div className="bg-white p-4 border border-zinc-200 rounded-xl">
                   <div className="flex items-center justify-between mb-3">
-                    <label className="text-sm font-medium text-zinc-400 block">Coleções para Monitorar (Volume Real)</label>
+                    <label className="text-sm font-medium text-zinc-500 block">Coleções para Monitorar (Volume Real)</label>
                     <button type="button" onClick={handleAddMonitorCol} className="text-xs text-accent hover:underline cursor-pointer">
                       + Adicionar Coleção
                     </button>
@@ -941,29 +1302,29 @@ export function MonitorView() {
                               value={c.label} 
                               onChange={e => handleUpdateMonitorCol(c.id, 'label', e.target.value)} 
                               placeholder="Nome Exibição" 
-                              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs" 
+                              className="bg-white border border-zinc-200 rounded px-2 py-1 text-xs" 
                             />
                             <input 
                               value={c.collectionPath} 
                               onChange={e => handleUpdateMonitorCol(c.id, 'collectionPath', e.target.value)} 
                               placeholder="Coleção" 
-                              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs font-mono" 
+                              className="bg-white border border-zinc-200 rounded px-2 py-1 text-xs font-mono" 
                             />
                             <input 
                               type="number"
                               title="Peso Leituras (Multiplicador)"
                               value={c.readWeight} 
                               onChange={e => handleUpdateMonitorCol(c.id, 'readWeight', Number(e.target.value))} 
-                              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-center" 
+                              className="bg-white border border-zinc-200 rounded px-2 py-1 text-xs text-center" 
                             />
                             <input 
                               type="number"
                               title="Peso Gravações (Multiplicador)"
                               value={c.writeWeight} 
                               onChange={e => handleUpdateMonitorCol(c.id, 'writeWeight', Number(e.target.value))} 
-                              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-center" 
+                              className="bg-white border border-zinc-200 rounded px-2 py-1 text-xs text-center" 
                             />
-                            <button type="button" onClick={() => handleRemoveMonitorCol(c.id)} className="text-rose-500 hover:text-rose-400 cursor-pointer">
+                            <button type="button" onClick={() => handleRemoveMonitorCol(c.id)} className="text-rose-500 hover:text-rose-600 cursor-pointer">
                               <XOctagon className="w-3 h-3" />
                             </button>
                          </div>
@@ -974,18 +1335,18 @@ export function MonitorView() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 rounded-xl bg-zinc-950/50 border border-zinc-800/60">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 rounded-xl bg-white border border-zinc-200/60">
               <div className="min-w-0">
                 <span className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Project ID</span>
-                <span className="text-zinc-200 font-mono text-sm break-all">{selectedClient.firebaseProjectId || 'Não configurado'}</span>
+                <span className="text-zinc-800 font-mono text-sm break-all">{selectedClient.firebaseProjectId || 'Não configurado'}</span>
               </div>
               <div className="min-w-0">
                 <span className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Database Name</span>
-                <span className="text-zinc-200 font-mono text-sm break-all">{selectedClient.firebaseDatabaseName || '(default)'}</span>
+                <span className="text-zinc-800 font-mono text-sm break-all">{selectedClient.firebaseDatabaseName || '(default)'}</span>
               </div>
               <div className="min-w-0">
                 <span className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Status SDK</span>
-                <span className="text-zinc-200 text-sm flex items-center gap-2 mt-1">
+                <span className="text-zinc-800 text-sm flex items-center gap-2 mt-1">
                   {selectedClient.parsedFirebaseConfig ? (
                     <><span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span> Configurado</>
                   ) : (
@@ -1000,16 +1361,16 @@ export function MonitorView() {
 
       {/* Relatório Comparativo (Administrativo) */}
       {selectedClient && gcpMetrics && !editingFirebase && (
-        <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-6 lg:p-8 flex flex-col mt-6">
-            <h3 className="font-display text-lg font-bold mb-6 flex items-center gap-2 text-white">
+        <div className="bg-white border border-zinc-200/80 rounded-[2rem] p-6 lg:p-8 flex flex-col mt-6">
+            <h3 className="font-display text-lg font-bold mb-6 flex items-center gap-2 text-black">
               <Activity className="w-5 h-5 text-accent" />
               Relatório Comparativo (Administrativo)
             </h3>
-            <p className="text-zinc-400 text-sm mb-6">Compare os números do painel Uso do Firebase com as métricas extraídas via Cloud Monitoring (AnymaSystem) para verificar a divergência. Insira os valores manuais do Firebase abaixo:</p>
+            <p className="text-zinc-500 text-sm mb-6">Compare os números do painel Uso do Firebase com as métricas extraídas via Cloud Monitoring (AnymaSystem) para verificar a divergência. Insira os valores manuais do Firebase abaixo:</p>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-zinc-300">
-                <thead className="bg-zinc-950/80 text-zinc-400 sticky top-0">
+              <table className="w-full text-left text-sm text-zinc-700">
+                <thead className="bg-white text-zinc-500 sticky top-0">
                   <tr>
                     <th className="p-3 font-semibold">Métrica</th>
                     <th className="p-3 w-48 font-semibold">Firebase Console (30 dias)</th>
@@ -1027,16 +1388,16 @@ export function MonitorView() {
                   ].map((row, idx) => {
                     const fbVal = (consoleData as any)[row.key];
                     const div = getDivergence(row.sysVal, fbVal);
-                    const divColor = Math.abs(div) < 5 ? 'text-emerald-400' : Math.abs(div) < 15 ? 'text-amber-400' : 'text-rose-400';
+                    const divColor = Math.abs(div) < 5 ? 'text-emerald-600' : Math.abs(div) < 15 ? 'text-amber-400' : 'text-rose-600';
                     return (
-                    <tr key={idx} className="hover:bg-zinc-800/20">
-                      <td className="p-3 font-sans font-medium text-zinc-200">{row.label}</td>
+                    <tr key={idx} className="hover:bg-zinc-50">
+                      <td className="p-3 font-sans font-medium text-zinc-800">{row.label}</td>
                       <td className="p-3">
                         <input 
                           type="number" 
                           value={fbVal || ''} 
                           onChange={e => setConsoleData(prev => ({ ...prev, [row.key]: Number(e.target.value) }))}
-                          className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 outline-none focus:border-accent text-right"
+                          className="w-full bg-white border border-zinc-200 rounded px-2 py-1 outline-none focus:border-accent text-right"
                           placeholder="0"
                         />
                       </td>
@@ -1054,6 +1415,190 @@ export function MonitorView() {
         </div>
       )}
 
+      {/* Modal de Importação de Faturamento GCP via CSV / BigQuery */}
+      <AnimatePresence>
+        {isCsvModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Overlay */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (csvSuccessCount === null && !isBqSyncing) setIsCsvModalOpen(false);
+              }}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            
+            {/* Container */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white border border-zinc-200 rounded-2xl p-6 sm:p-8 max-w-2xl w-full relative z-10 max-h-[90vh] overflow-y-auto flex flex-col gap-5"
+            >
+              <div>
+                <h3 className="font-display text-xl font-bold text-black flex items-center gap-2">
+                  <Database className="w-5 h-5 text-accent" />
+                  Sincronizar Faturamento Google Cloud
+                </h3>
+                <p className="text-zinc-500 text-xs sm:text-sm mt-1">
+                  Mantenha os custos reais do faturamento GCP de todos os seus clientes em perfeito sincronismo.
+                </p>
+              </div>
+
+              
+
+              {csvSuccessCount !== null ? (
+                <div className="text-center py-8 space-y-4">
+                  <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 rounded-full flex items-center justify-center mx-auto animate-bounce">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <h4 className="text-lg font-bold text-black">Sincronização concluída!</h4>
+                  <p className="text-zinc-500 text-sm">
+                    {csvSuccessCount} projeto(s) mapeado(s) e atualizado(s) com sucesso em sua base de clientes.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCsvModalOpen(false);
+                      setCsvSuccessCount(null);
+                      setParsedCsvRecords([]);
+                      setBqResult(null);
+                    }}
+                    className="px-5 py-2.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-900 rounded-xl font-semibold text-sm transition-colors cursor-pointer"
+                  >
+                    Fechar Painel
+                  </button>
+                </div>
+              )  : (
+                <div className="space-y-4">
+                  <div className="p-4 bg-accent/5 border border-accent/20 rounded-xl text-xs text-zinc-700 space-y-2">
+                    <p className="font-semibold text-black flex items-center gap-1">
+                      <Zap className="w-4 h-4 text-accent" />
+                      Como funciona a sincronização automatizada?
+                    </p>
+                    <p className="leading-relaxed">
+                      O faturamento real do Google Cloud é consolidado de forma programática exportando o <strong>Billing Export</strong> para uma tabela do <strong>Google BigQuery</strong>.
+                    </p>
+                    <p className="leading-relaxed">
+                      O AnymaSystem usa a mesma chave de Service Account configurada para consultar a tabela de faturamento em tempo real, calcular o total mensal de cada projeto e atualizar no Firestore automaticamente!
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-zinc-500 text-xs font-semibold mb-1.5 uppercase tracking-wider">
+                        BigQuery Project ID
+                      </label>
+                      <input 
+                        type="text"
+                        placeholder="ex: anyma-billing-prod"
+                        value={bqProjectId}
+                        onChange={(e) => setBqProjectId(e.target.value)}
+                        className="bg-white border border-zinc-200 focus:border-zinc-300 text-zinc-900 text-xs sm:text-sm rounded-xl px-4 py-2.5 outline-none w-full font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-zinc-500 text-xs font-semibold mb-1.5 uppercase tracking-wider">
+                        Dataset ID
+                      </label>
+                      <input 
+                        type="text"
+                        placeholder="ex: gcp_billing"
+                        value={bqDatasetId}
+                        onChange={(e) => setBqDatasetId(e.target.value)}
+                        className="bg-white border border-zinc-200 focus:border-zinc-300 text-zinc-900 text-xs sm:text-sm rounded-xl px-4 py-2.5 outline-none w-full font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-zinc-500 text-xs font-semibold mb-1.5 uppercase tracking-wider">
+                        Table ID / Export Name
+                      </label>
+                      <input 
+                        type="text"
+                        placeholder="ex: gcp_billing_export_resource_v1"
+                        value={bqTableId}
+                        onChange={(e) => setBqTableId(e.target.value)}
+                        className="bg-white border border-zinc-200 focus:border-zinc-300 text-zinc-900 text-xs sm:text-sm rounded-xl px-4 py-2.5 outline-none w-full font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {bqError && (
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-600 font-medium">
+                      {bqError}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-200/60 mt-4">
+                    <button
+                      type="button"
+                      disabled={isBqSyncing}
+                      onClick={() => {
+                        setIsCsvModalOpen(false);
+                        setBqError(null);
+                      }}
+                      className="px-5 py-2.5 text-sm font-semibold bg-transparent hover:bg-zinc-100 text-zinc-500 hover:text-black rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBqSyncing || !bqProjectId || !bqDatasetId || !bqTableId}
+                      onClick={handleBqSync}
+                      className="px-5 py-2.5 text-sm font-bold bg-accent hover:bg-accent/90 text-black rounded-xl transition-all disabled:opacity-40 cursor-pointer flex items-center gap-2 shadow-[0_0_20px_rgba(215,254,3,0.15)]"
+                    >
+                      {isBqSyncing ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Consultando BigQuery...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-4 h-4" />
+                          <span>Executar Sincronização Direta</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+
+      {isTrialModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white border border-zinc-200 rounded-3xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="font-bold text-lg mb-2 text-zinc-900">Período de Trial</h3>
+            <p className="text-sm text-zinc-500 mb-4">Selecione a data de encerramento do trial (quando deverá mudar para o status ativo).</p>
+            <input 
+              type="date"
+              value={trialEndDate}
+              onChange={(e) => setTrialEndDate(e.target.value)}
+              className="w-full bg-white border border-zinc-200 text-zinc-800 text-sm rounded-xl px-4 py-3 outline-none focus:border-accent mb-6"
+            />
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setIsTrialModalOpen(false)}
+                className="flex-1 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-semibold rounded-xl text-sm transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleConfirmTrial}
+                disabled={!trialEndDate}
+                className="flex-1 py-2.5 bg-accent hover:bg-accent/90 text-black font-semibold rounded-xl text-sm transition-colors disabled:opacity-50"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

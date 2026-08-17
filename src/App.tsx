@@ -2,11 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { NotificationProvider } from './components/NotificationContext';
 import { cn } from './utils';
-import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { KPICard } from './components/KPICard';
-import { RevenueChart, ClientsChart } from './components/Charts';
-import { AlertsPanel } from './components/AlertsPanel';
 import { ClientsView } from './components/clients/ClientsView';
 import { ClientDetailView } from './components/clients/ClientDetailView';
 import { MonitorView } from './components/monitor/MonitorView';
@@ -15,8 +12,13 @@ import { TicketsView } from './components/tickets/TicketsView';
 import { AuditView } from './components/audit/AuditView';
 import { SettingsView } from './components/settings/SettingsView';
 import { LeadsView } from './components/leads/LeadsView';
+import { CustomizationView } from './components/customization/CustomizationView';
+import { InvestmentsView } from './components/investments/InvestmentsView';
+import { AgendaView } from './components/agenda/AgendaView';
+import { NocHubDashboard } from './components/dashboard/NocHubDashboard';
 import { LandingPage } from './components/landing/LandingPage';
 import { PortfolioPage } from './components/portfolio/PortfolioPage';
+import { CollaboratorAuthView } from './components/CollaboratorAuthView';
 import { 
   DollarSign, 
   Wallet, 
@@ -27,7 +29,7 @@ import {
   ShieldAlert 
 } from 'lucide-react';
 import { KPIData, ViewType } from './types';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 import { db, auth } from './lib/firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 
@@ -40,123 +42,14 @@ const defaultKpiData: KPIData[] = [
   { title: 'Tickets Abertos', value: '12', trend: 3, icon: Ticket },
   { title: 'Alertas Críticos', value: '2', trend: -1, icon: ShieldAlert },
 ];
-
-function DashboardHome() {
-  const [showMoreKPIs, setShowMoreKPIs] = useState(false);
-  const [kpis, setKpis] = useState([...defaultKpiData]);
-
-  useEffect(() => {
-    if (!auth.currentUser) return;
-
-    // Load Transactions for Revenue
-    const qTrx = query(collection(db, 'transactions'), where('ownerId', '==', auth.currentUser.uid));
-    const unsubTrx = onSnapshot(qTrx, (snap) => {
-       const now = new Date();
-       const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-       const currentYearPrefix = `${now.getFullYear()}`;
-       
-       let monthRevenue = 0;
-       let yearRevenue = 0;
-       
-       snap.forEach(doc => {
-         const t = doc.data();
-         if (t.type === 'entrada' && t.status === 'paid' && t.date) {
-            if (t.date.startsWith(currentMonthPrefix)) {
-               monthRevenue += t.amount;
-            }
-            if (t.date.startsWith(currentYearPrefix)) {
-               yearRevenue += t.amount;
-            }
-         }
-       });
-
-       setKpis(prev => {
-         const newKpis = [...prev];
-         newKpis[0] = { ...newKpis[0], value: `R$ ${(monthRevenue/1000).toFixed(1)}k` };
-         
-         const yearString = yearRevenue > 1000000 ? `${(yearRevenue/1000000).toFixed(2)}M` : `${(yearRevenue/1000).toFixed(1)}k`;
-         newKpis[1] = { ...newKpis[1], value: `R$ ${yearString}` };
-         return newKpis;
-       });
-    });
-
-    // Load Clients
-    const qCl = query(collection(db, 'clients'), where('ownerId', '==', auth.currentUser.uid));
-    const unsubCl = onSnapshot(qCl, (snap) => {
-       let active = 0, trial = 0, suspended = 0;
-       snap.forEach(doc => {
-         const status = doc.data().status;
-         if (status === 'active') active++;
-         if (status === 'trial') trial++;
-         if (status === 'suspended') suspended++;
-       });
-       
-       setKpis(prev => {
-         const newKpis = [...prev];
-         newKpis[2] = { ...newKpis[2], value: active.toString() };
-         newKpis[3] = { ...newKpis[3], value: trial.toString() };
-         newKpis[4] = { ...newKpis[4], value: suspended.toString() };
-         return newKpis;
-       });
-    });
-
-    return () => {
-      unsubTrx();
-      unsubCl();
-    };
-  }, []);
-
+function DashboardHome({ onNavigate }: { onNavigate: (view: any, id?: string) => void }) {
   return (
-    <div className="space-y-8">
-      {/* KPI Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-2">
-          <KPICard data={kpis[0]} highlighted={true} />
-        </div>
-        <KPICard data={kpis[2]} />
-        <div className="lg:col-span-1 flex items-center justify-center">
-          <button 
-            onClick={() => setShowMoreKPIs(!showMoreKPIs)}
-            className="w-full h-full min-h-[120px] rounded-[2rem] border border-dashed border-zinc-700 hover:border-accent text-zinc-400 hover:text-accent transition-colors flex flex-col items-center justify-center gap-2"
-          >
-            <span className="text-sm font-medium">{showMoreKPIs ? 'Ocultar Detalhes' : 'Mostrar Mais KPIs'}</span>
-          </button>
-        </div>
-
-        {showMoreKPIs && (
-          <>
-            <KPICard data={kpis[1]} />
-            <KPICard data={kpis[3]} />
-            <KPICard data={kpis[5]} />
-            <KPICard data={kpis[6]} />
-            <KPICard data={kpis[4]} />
-          </>
-        )}
-      </div>
-
-      {/* Charts & Alerts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="h-[380px]">
-            <RevenueChart />
-          </div>
-          <div className="h-[380px]">
-            <ClientsChart />
-          </div>
-        </div>
-        
-        <div className="lg:col-span-1">
-          <AlertsPanel />
-        </div>
-      </div>
-    </div>
+    <NocHubDashboard onNavigate={onNavigate} />
   );
 }
 
 function MainLayout({ currentView, children, onNavigate }: { currentView: ViewType, children: React.ReactNode, onNavigate: (view: ViewType, id?: string) => void }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -175,14 +68,14 @@ function MainLayout({ currentView, children, onNavigate }: { currentView: ViewTy
   };
 
   if (user === undefined) {
-    return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-500">Checking auth...</div>;
+    return <div className="min-h-screen bg-[#F5F5F8] flex items-center justify-center text-zinc-500">Checking auth...</div>;
   }
 
   if (user === null) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
-        <div className="bg-zinc-900 border border-zinc-800 p-6 sm:p-8 rounded-2xl max-w-md w-full text-center">
-          <h2 className="text-xl sm:text-2xl font-display font-bold text-zinc-100 mb-4">Acesso Restrito</h2>
+      <div className="min-h-screen bg-[#F5F5F8] flex items-center justify-center px-4">
+        <div className="bg-white border border-zinc-200 p-6 sm:p-8 rounded-2xl max-w-md w-full text-center">
+          <h2 className="text-xl sm:text-2xl font-display font-bold text-black mb-4">Acesso Restrito</h2>
           <p className="text-zinc-400 text-sm mb-8">Faça login com sua conta do Google para acessar a AnimaSystem Master.</p>
           <button 
             onClick={handleLogin}
@@ -196,32 +89,16 @@ function MainLayout({ currentView, children, onNavigate }: { currentView: ViewTy
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100 font-sans relative overflow-x-hidden">
-      <Sidebar 
-        currentView={currentView} 
-        onViewChange={(v) => {
-          onNavigate(v);
-          setMobileSidebarOpen(false);
-        }} 
-        isCollapsed={isCollapsed}
-        onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
-        mobileOpen={mobileSidebarOpen}
-        onCloseMobile={() => setMobileSidebarOpen(false)}
-      />
-      
-      <main className={cn(
-        "flex-1 flex flex-col min-h-screen transition-all duration-300 w-full overflow-hidden ml-0 mr-0",
-        isCollapsed ? "md:ml-20" : "md:ml-64"
-      )}>
+    <div className="flex min-h-screen bg-[#f5f5f8] text-zinc-900 font-sans relative overflow-x-hidden">
+      <main className="flex-1 flex flex-col min-h-screen w-full overflow-hidden ml-0 mr-0">
         <Header 
           currentView={currentView} 
           onNavigate={onNavigate} 
-          onToggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)} 
         />
         
-        <div className="flex-1 p-4 sm:p-8 overflow-auto flex flex-col custom-scrollbar">
+        <div className="flex-1 overflow-auto flex flex-col custom-scrollbar pb-16">
           {/* Main Content Area */}
-          <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col">
+          <div className="w-full flex-1 flex flex-col px-6 sm:px-10 xl:px-16 pt-16 pb-16">
             {children}
           </div>
         </div>
@@ -232,8 +109,48 @@ function MainLayout({ currentView, children, onNavigate }: { currentView: ViewTy
 
 function AppRoutes() {
   const navigate = useNavigate();
-  // We use currentView to keep the sidebar highlighting matching until we refactor it completely to use route matching.
-  
+  const [currentUser, setCurrentUser] = useState<User | null | undefined>(undefined);
+  const [userRole, setUserRole] = useState<'collaborator' | 'client' | null>(null);
+  const [clientDocId, setClientDocId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Enforce Google login restricted strictly to danielvaleweb@gmail.com
+        const isGoogle = user.providerData.some(p => p.providerId === 'google.com');
+        if (isGoogle && user.email !== 'danielvaleweb@gmail.com') {
+          await auth.signOut();
+          setCurrentUser(null);
+          setUserRole(null);
+          setClientDocId(null);
+          return;
+        }
+
+        try {
+          const q = query(collection(db, 'clients'), where('authUid', '==', user.uid));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            setUserRole('client');
+            setClientDocId(snap.docs[0].id);
+          } else {
+            setUserRole('collaborator');
+            setClientDocId(null);
+          }
+        } catch (err) {
+          console.error("Error checking user role", err);
+          setUserRole('collaborator');
+          setClientDocId(null);
+        }
+        setCurrentUser(user);
+      } else {
+        setCurrentUser(null);
+        setUserRole(null);
+        setClientDocId(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   const handleNavigateToClientDetail = (clientId: string) => {
     navigate(`/clientes/${clientId}`);
   };
@@ -243,30 +160,120 @@ function AppRoutes() {
   };
 
   const handleNavigate = (v: ViewType, id?: string) => {
-    if (v === 'dashboard') navigate('/home');
+    if (v === 'dashboard') navigate('/admin');
     else if (v === 'client-detail' && id) navigate(`/clientes/${id}`);
-    else navigate(`/${v === 'settings' ? 'configuracoes' : v === 'monitor' ? 'monitoramento' : v === 'audit' ? 'auditoria' : v === 'tickets' ? 'tickets' : v === 'finance' ? 'financeiro' : v === 'clients' ? 'clientes' : v === 'leads' ? 'leads' : v}`);
+    else navigate(`/${v === 'settings' ? 'configuracoes' : v === 'monitor' ? 'monitoramento' : v === 'audit' ? 'auditoria' : v === 'tickets' ? 'tickets' : v === 'finance' ? 'financeiro' : v === 'clients' ? 'clientes' : v === 'leads' ? 'leads' : v === 'colab-auth' ? 'autorizar-colaborador' : v === 'customization' ? 'personalizacao' : v === 'investments' ? 'investimentos' : v === 'agenda' ? 'agenda' : v}`);
   };
 
+  if (currentUser === undefined) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F8] flex items-center justify-center text-zinc-500 font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-xs font-bold uppercase tracking-widest text-[#D7FE03]">Carregando Sistema...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Client Routing Sandbox
+  if (currentUser && userRole === 'client') {
+    return (
+      <Routes>
+        <Route path="/" element={<Navigate to={`/cliente/${clientDocId}`} replace />} />
+        <Route path="/portfolio" element={<PortfolioPage />} />
+        <Route path="/cliente/:clientId" element={
+          <ClientPortalLayout>
+            <ClientPortalRoute clientDocId={clientDocId!} />
+          </ClientPortalLayout>
+        } />
+        <Route path="*" element={<Navigate to={`/cliente/${clientDocId}`} replace />} />
+      </Routes>
+    );
+  }
+
+  // Collaborator Routing
+  if (currentUser && userRole === 'collaborator') {
+    return (
+      <Routes>
+        <Route path="/" element={<LandingPage onEnter={() => {}} />} />
+        <Route path="/portfolio" element={<PortfolioPage />} />
+        <Route path="/admin" element={<MainLayout currentView="dashboard" onNavigate={handleNavigate}><DashboardHome onNavigate={handleNavigate} /></MainLayout>} />
+        <Route path="/leads" element={<MainLayout currentView="leads" onNavigate={handleNavigate}><LeadsView /></MainLayout>} />
+        <Route path="/clientes" element={<MainLayout currentView="clients" onNavigate={handleNavigate}><ClientsView onClientSelect={handleNavigateToClientDetail} /></MainLayout>} />
+        <Route path="/clientes/:clientId" element={<MainLayout currentView="client-detail" onNavigate={handleNavigate}><ClientDetailRoute onBack={handleBackToClients} /></MainLayout>} />
+        <Route path="/financeiro" element={<MainLayout currentView="finance" onNavigate={handleNavigate}><FinanceView onNavigate={handleNavigate} /></MainLayout>} />
+        <Route path="/tickets" element={<MainLayout currentView="tickets" onNavigate={handleNavigate}><TicketsView /></MainLayout>} />
+        <Route path="/monitoramento" element={<MainLayout currentView="monitor" onNavigate={handleNavigate}><MonitorView onNavigate={handleNavigate} /></MainLayout>} />
+        <Route path="/auditoria" element={<MainLayout currentView="audit" onNavigate={handleNavigate}><AuditView /></MainLayout>} />
+        <Route path="/configuracoes" element={<MainLayout currentView="settings" onNavigate={handleNavigate}><SettingsView /></MainLayout>} />
+        <Route path="/personalizacao" element={<MainLayout currentView="customization" onNavigate={handleNavigate}><CustomizationView /></MainLayout>} />
+        <Route path="/investimentos" element={<MainLayout currentView="investments" onNavigate={handleNavigate}><InvestmentsView /></MainLayout>} />
+        <Route path="/agenda" element={<MainLayout currentView="agenda" onNavigate={handleNavigate}><AgendaView onNavigate={handleNavigate} /></MainLayout>} />
+        <Route path="/autorizar-colaborador" element={<MainLayout currentView="colab-auth" onNavigate={handleNavigate}><CollaboratorAuthView /></MainLayout>} />
+        <Route path="*" element={<Navigate to="/admin" replace />} />
+      </Routes>
+    );
+  }
+
+  // Public/Unauthenticated Routing
   return (
     <Routes>
-      <Route path="/" element={<LandingPage onEnter={() => navigate('/home')} />} />
+      <Route path="/" element={<LandingPage onEnter={() => {}} />} />
       <Route path="/portfolio" element={<PortfolioPage />} />
-      <Route path="/home" element={<MainLayout currentView="dashboard" onNavigate={handleNavigate}><DashboardHome /></MainLayout>} />
-      <Route path="/leads" element={<MainLayout currentView="leads" onNavigate={handleNavigate}><LeadsView /></MainLayout>} />
-      <Route path="/clientes" element={<MainLayout currentView="clients" onNavigate={handleNavigate}><ClientsView onClientSelect={handleNavigateToClientDetail} /></MainLayout>} />
-      <Route path="/clientes/:clientId" element={<MainLayout currentView="client-detail" onNavigate={handleNavigate}><ClientDetailRoute onBack={handleBackToClients} /></MainLayout>} />
-      <Route path="/financeiro" element={<MainLayout currentView="finance" onNavigate={handleNavigate}><FinanceView /></MainLayout>} />
-      <Route path="/tickets" element={<MainLayout currentView="tickets" onNavigate={handleNavigate}><TicketsView /></MainLayout>} />
-      <Route path="/monitoramento" element={<MainLayout currentView="monitor" onNavigate={handleNavigate}><MonitorView /></MainLayout>} />
-      <Route path="/auditoria" element={<MainLayout currentView="audit" onNavigate={handleNavigate}><AuditView /></MainLayout>} />
-      <Route path="/configuracoes" element={<MainLayout currentView="settings" onNavigate={handleNavigate}><SettingsView /></MainLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
 
 import { useParams } from 'react-router-dom';
+
+function ClientPortalRoute({ clientDocId }: { clientDocId: string }) {
+  const { clientId } = useParams<{ clientId: string }>();
+  
+  if (clientId !== clientDocId) {
+    return <Navigate to={`/cliente/${clientDocId}`} replace />;
+  }
+
+  return <ClientDetailView clientId={clientDocId} onBack={() => {}} isClientView={true} />;
+}
+
+function ClientPortalLayout({ children }: { children: React.ReactNode }) {
+  const handleLogout = () => {
+    auth.signOut();
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F8] text-zinc-900 flex flex-col font-sans">
+      <header className="border-b border-zinc-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#D7FE03]/10 border border-[#D7FE03]/20 flex items-center justify-center">
+              <span className="text-[#D7FE03] font-display font-bold text-xs">AS</span>
+            </div>
+            <div>
+              <span className="font-display font-bold text-sm tracking-wide text-black">AnimaSystem</span>
+              <span className="text-[10px] text-zinc-500 block -mt-1 font-medium uppercase tracking-wider">Portal do Cliente</span>
+            </div>
+          </div>
+
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-700 hover:text-black text-xs font-semibold tracking-wide transition-all cursor-pointer"
+          >
+            Sair
+          </button>
+        </div>
+      </header>
+
+      <main className="flex-grow p-4 sm:p-8">
+        <div className="max-w-7xl mx-auto">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
 
 function ClientDetailRoute({ onBack }: { onBack: () => void }) {
   const { clientId } = useParams<{ clientId: string }>();

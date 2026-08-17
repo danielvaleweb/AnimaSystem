@@ -1,4 +1,4 @@
-import { Search, Menu } from 'lucide-react';
+import { Search, Menu, Settings, ShieldAlert, Bell, Palette, LogOut, Key, SearchIcon, Zap, ShieldCheck, Activity, ChevronDown, CheckCircle2, Calendar, Clock } from 'lucide-react';
 import { ViewType, ClientData } from '../types';
 import { auth, db } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -11,14 +11,47 @@ interface HeaderProps {
   onToggleMobileSidebar?: () => void;
 }
 
-export function Header({ currentView, onNavigate, onToggleMobileSidebar }: HeaderProps) {
+interface MenuItem {
+  label: string;
+  view?: ViewType;
+  submenus?: { label: string; view: ViewType }[];
+}
+
+const topMenus: MenuItem[] = [
+  { label: 'Dashboard', view: 'dashboard' },
+  { label: 'Agenda', view: 'agenda' },
+  { 
+    label: 'Clientes', 
+    view: 'clients',
+    submenus: [
+      { label: 'Leads', view: 'leads' },
+      { label: 'Tickets', view: 'tickets' }
+    ]
+  },
+  { 
+    label: 'Financeiro', 
+    view: 'finance',
+    submenus: [
+      { label: 'Investimentos', view: 'investments' }
+    ]
+  },
+  { label: 'Operacional', view: 'monitor' },
+];
+
+export function Header({ currentView, onNavigate }: HeaderProps) {
   const [user, setUser] = useState<User | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState<ClientData[]>([]);
-  const [showDropdown, setShowDropdown] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [hasUnread, setHasUnread] = useState(true);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const [dueClients, setDueClients] = useState<ClientData[]>([]);
+  
   const profileRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
+
+  // Keep track of the active hover state for dropdowns
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, setUser);
@@ -27,65 +60,19 @@ export function Header({ currentView, onNavigate, onToggleMobileSidebar }: Heade
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
-      }
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setShowProfileMenu(false);
+      }
+      if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+        setShowSettingsMenu(false);
+      }
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  useEffect(() => {
-    const fetchResults = async () => {
-      if (!searchTerm.trim() || !auth.currentUser) {
-        setSearchResults([]);
-        return;
-      }
-      
-      const q = query(
-        collection(db, 'clients'),
-        where('ownerId', '==', auth.currentUser.uid)
-      );
-      
-      const snapshot = await getDocs(q);
-      const results: ClientData[] = [];
-      const term = searchTerm.toLowerCase();
-      
-      snapshot.forEach(doc => {
-        const data = doc.data() as ClientData;
-        if (
-          data.name.toLowerCase().includes(term) || 
-          data.domain.toLowerCase().includes(term) ||
-          data.responsible?.toLowerCase().includes(term)
-        ) {
-          results.push({ id: doc.id, ...data });
-        }
-      });
-      
-      setSearchResults(results);
-    };
-
-    const timeoutId = setTimeout(fetchResults, 300);
-    return () => clearTimeout(timeoutId);
-  }, [searchTerm]);
-
-  const titles: Record<ViewType, { title: string; subtitle: string }> = {
-    dashboard: { title: 'Visão Geral da Operação', subtitle: 'Acompanhe a saúde de toda a infraestrutura AnimaSystem.' },
-    clients: { title: 'Gestão de Clientes', subtitle: 'Administre os projetos, planos e status dos sistemas.' },
-    'client-detail': { title: 'Detalhes do Cliente', subtitle: 'Visualização individual e configurações do projeto.' },
-    finance: { title: 'Financeiro', subtitle: 'Acompanhe MRR, faturamentos e inadimplência.' },
-    tickets: { title: 'Tickets', subtitle: 'Atendimento e suporte técnico das operações.' },
-    monitor: { title: 'Monitoramento', subtitle: 'Status dos serviços na nuvem e limites.' },
-    audit: { title: 'Auditoria', subtitle: 'Logs de ações críticas e segurança.' },
-    settings: { title: 'Configurações', subtitle: 'Ajustes globais da plataforma.' },
-    leads: { title: 'Leads', subtitle: 'Gerencie solicitações de consultoria e novos contatos.' },
-    landing: { title: '', subtitle: '' }
-  };
-
-  const { title, subtitle } = titles[currentView];
 
   const displayName = user?.displayName || 'Admin Master';
   const email = user?.email || 'master@animasystem.com';
@@ -93,135 +80,261 @@ export function Header({ currentView, onNavigate, onToggleMobileSidebar }: Heade
   const initials = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
   return (
-    <header className="h-20 flex items-center justify-between px-4 sm:px-8 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50 sticky top-0 z-10 w-full">
-      <div className="flex items-center gap-3.5 min-w-0">
-        {onToggleMobileSidebar && (
-          <button 
-            type="button"
-            onClick={onToggleMobileSidebar}
-            className="md:hidden flex items-center justify-center p-2 rounded-xl border border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition-colors pointer-events-auto cursor-pointer"
-            aria-label="Abrir menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        )}
-        <div className="min-w-0">
-          <h1 className="font-display text-lg sm:text-2xl font-bold tracking-tight text-white truncate max-w-[180px] sm:max-w-none">{title}</h1>
-          <p className="text-zinc-400 text-xs sm:text-sm truncate hidden sm:block">{subtitle}</p>
-        </div>
+    <header className="mx-6 sm:mx-10 xl:mx-16 mt-6 rounded-3xl bg-white shadow-sm h-20 flex items-center justify-between px-6 sm:px-10 xl:px-12 sticky top-4 z-40" style={{ fontFamily: 'Urbanist, sans-serif' }}>
+      
+      {/* LEFT: Brand Logo "AnimaSystem" */}
+      <div 
+        onClick={() => onNavigate?.('dashboard')}
+        className="flex items-center gap-2.5 cursor-pointer hover:opacity-85 transition-all shrink-0 select-none"
+      >
+        <span className="text-2xl font-sans tracking-tight select-none">
+          <span className="font-light text-zinc-400">Anima</span>
+          <span className="font-bold text-black tracking-tight">System</span>
+        </span>
       </div>
 
-      <div className="flex items-center gap-4 sm:gap-6 shrink-0">
-        <div className="relative group hidden md:block" ref={searchRef}>
-          <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 group-focus-within:text-accent transition-colors" />
-          <input 
-            type="text" 
-            placeholder="Buscar clientes..." 
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setShowDropdown(true);
-            }}
-            onFocus={() => setShowDropdown(true)}
-            className="bg-zinc-900/50 border border-zinc-800 focus:border-accent/50 outline-none rounded-full py-2 pl-10 pr-4 text-sm w-64 text-zinc-200 placeholder:text-zinc-500 transition-all"
-          />
+      {/* MIDDLE: Top navigation menus (centered exactly like screenshot) */}
+      <nav className="hidden md:flex items-center gap-2 lg:gap-4 mx-auto overflow-visible py-1 no-scrollbar">
+        {topMenus.map((item) => {
+          const isActive = currentView === item.view || item.submenus?.some(sub => sub.view === currentView);
+          const hasSubmenu = item.submenus && item.submenus.length > 0;
           
-          {showDropdown && searchTerm.trim() !== '' && (
-            <div className="absolute top-full mt-2 w-full bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden py-2 max-h-64 overflow-y-auto z-50">
-              {searchResults.length > 0 ? (
-                searchResults.map(client => (
-                  <button
-                    key={client.id}
-                    onClick={() => {
-                      setShowDropdown(false);
-                      setSearchTerm('');
-                      if (onNavigate) onNavigate('client-detail', client.id);
-                    }}
-                    className="w-full text-left px-4 py-2 hover:bg-zinc-800 transition-colors flex items-center gap-3 cursor-pointer"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-400">
-                      {client.name.substring(0,2).toUpperCase()}
+          return (
+            <div 
+              key={item.label}
+              className="relative group"
+              onMouseEnter={() => setActiveDropdown(item.label)}
+              onMouseLeave={() => setActiveDropdown(null)}
+            >
+              <button
+                onClick={() => item.view && onNavigate?.(item.view)}
+                className={`px-4 py-2 rounded-full text-xs transition-all font-semibold whitespace-nowrap cursor-pointer flex items-center gap-1 ${
+                  isActive 
+                    ? 'bg-black text-white shadow-xs font-bold' 
+                    : 'text-zinc-600 hover:text-black font-medium hover:bg-zinc-50'
+                }`}
+              >
+                {item.label}
+              </button>
+
+              {/* Submenu Dropdown */}
+              {hasSubmenu && activeDropdown === item.label && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 pt-2 z-50">
+                  <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-xl py-2 min-w-[160px] animate-fade-in text-left">
+                    {item.submenus!.map(sub => (
+                      <button
+                        key={sub.view}
+                        onClick={() => {
+                          onNavigate?.(sub.view);
+                          setActiveDropdown(null);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-xs transition-all cursor-pointer font-bold whitespace-nowrap ${currentView === sub.view ? 'text-black bg-zinc-50' : 'text-zinc-600 hover:bg-zinc-50 hover:text-black'}`}
+                      >
+                        {sub.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
+
+      {/* RIGHT: Notifications, Settings Dropdown, Profile */}
+      <div className="flex items-center gap-3 sm:gap-4 shrink-0 relative" ref={profileRef}>
+
+        {/* Notifications Dropdown */}
+        <div className="relative" ref={notificationsRef}>
+          <button 
+            onClick={() => setShowNotifications(!showNotifications)}
+            className={`relative w-11 h-11 flex items-center justify-center border border-zinc-200 rounded-full transition-all cursor-pointer ${
+              showNotifications ? 'bg-zinc-100 text-black' : 'text-zinc-500 hover:text-black hover:bg-zinc-50'
+            }`}
+          >
+            <Bell className="h-5 w-5" strokeWidth={1.5} />
+            {hasUnread && <span className="absolute top-[10px] right-[10px] block h-2 w-2 rounded-full border-2 border-white bg-red-500" />}
+          </button>
+
+          {showNotifications && (
+            <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-zinc-200/80 rounded-3xl shadow-2xl py-3 z-50 animate-fade-in font-sans text-left">
+              <div className="px-5 py-3 border-b border-zinc-100 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider block">Notificações</span>
+                  <p className="text-sm font-black text-zinc-900 leading-tight">Suas atualizações</p>
+                </div>
+                {hasUnread && <div className="text-[10px] font-medium text-zinc-500">3 Novas</div>}
+              </div>
+
+              <div className="flex flex-col py-2 max-h-[350px] overflow-auto custom-scrollbar">
+                
+                {dueClients.length > 0 && dueClients.map(client => (
+                  <div key={client.id} className="px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group">
+                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                      <Bell className="w-4 h-4 text-red-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-zinc-200 truncate">{client.name}</p>
-                      <p className="text-xs text-zinc-500 truncate flex items-center gap-1.5 mt-0.5">
-                        <a 
-                          href={client.domain.startsWith('http') ? client.domain : `https://${client.domain}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="text-emerald-400 hover:underline cursor-pointer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {client.domain}
-                        </a>
-                        <span className="text-zinc-700">•</span>
-                        <span>{client.responsible}</span>
+                      <p className="text-sm font-bold text-zinc-900 group-hover:text-accent transition-colors">Vencimento Hoje</p>
+                      <p className="text-xs text-zinc-500 mt-0.5 leading-snug">
+                        A mensalidade do cliente <span className="font-semibold text-zinc-700">{client.name}</span> vence hoje.
                       </p>
+                      <span className="text-[10px] text-zinc-400 font-medium mt-1.5 block">Agora mesmo</span>
                     </div>
-                  </button>
-                ))
-              ) : (
-                <div className="px-4 py-3 text-sm text-zinc-500 text-center">Nenhum cliente encontrado.</div>
-              )}
+                  </div>
+                ))}
+
+                {dueClients.length === 0 && (
+                  <div className="px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group">
+                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                      <Bell className="w-4 h-4 text-red-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-zinc-900 group-hover:text-accent transition-colors">Vencimento Hoje</p>
+                      <p className="text-xs text-zinc-500 mt-0.5 leading-snug">
+                        O cliente <span className="font-semibold text-zinc-700">Marcenaria Sheiffer</span> vence hoje.
+                      </p>
+                      <span className="text-[10px] text-zinc-400 font-medium mt-1.5 block">Há 5 min</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                    <Calendar className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-zinc-900 group-hover:text-accent transition-colors">Compromisso</p>
+                    <p className="text-xs text-zinc-500 mt-0.5 leading-snug">
+                      Hoje você tem um compromisso agendado às 14:00.
+                    </p>
+                    <span className="text-[10px] text-zinc-400 font-medium mt-1.5 block">Há 2 horas</span>
+                  </div>
+                </div>
+
+                <div className="px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group">
+                  <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-zinc-900 group-hover:text-accent transition-colors">Tarefa Pendente</p>
+                    <p className="text-xs text-zinc-500 mt-0.5 leading-snug">
+                      Você tem uma nova tarefa para concluir até o final do dia.
+                    </p>
+                    <span className="text-[10px] text-zinc-400 font-medium mt-1.5 block">Ontem</span>
+                  </div>
+                </div>
+
+              </div>
+
+              <div className="px-5 pt-3 pb-1 border-t border-zinc-100">
+                <button onClick={() => setHasUnread(false)} className="w-full py-2 text-xs font-bold text-zinc-500 hover:text-black hover:bg-zinc-100 rounded-xl transition-colors cursor-pointer">
+                  Marcar todas como lidas
+                </button>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-3 pl-6 border-l border-zinc-800/50 relative">
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium text-zinc-200">{displayName}</p>
-            <p className="text-xs text-zinc-500">{email}</p>
-          </div>
-          <div className="relative" ref={profileRef}>
-            <button 
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center hover:border-zinc-500 transition-colors focus:outline-none cursor-pointer"
-            >
-               {photoURL ? (
-                 <img src={photoURL} alt={displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-               ) : (
-                 <span className="text-sm font-medium font-display text-zinc-400">{initials}</span>
-               )}
-            </button>
+        {/* Settings Icon (Gear) with its comprehensive tooltip/dropdown */}
+        <div className="relative" ref={settingsRef}>
+          <button 
+            onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+            className={`w-11 h-11 flex items-center justify-center border border-zinc-200 rounded-full transition-all cursor-pointer ${
+              showSettingsMenu ? 'bg-zinc-100 text-black' : 'text-zinc-500 hover:text-black hover:bg-zinc-50'
+            }`}
+          >
+            <Settings className="h-5 w-5" strokeWidth={1.5} />
+          </button>
 
-            {showProfileMenu && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl py-2 z-50">
-                <button className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-colors flex flex-col cursor-pointer">
-                  <span className="font-medium text-white">Meu perfil</span>
-                  <span className="text-[10px] text-zinc-500">Alterar nome, cargo ou foto</span>
-                </button>
-                <div className="h-px bg-zinc-800/50 my-1"></div>
+          {showSettingsMenu && (
+            <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-zinc-200/80 rounded-2xl shadow-xl py-2 z-50 animate-fade-in font-sans text-left">
+              <div className="px-4 py-2 border-b border-zinc-100">
+                <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider block">Painel Administrativo</span>
+                <p className="text-xs font-black text-zinc-900 leading-tight">Configurações Rápidas</p>
+              </div>
+
+              <div className="p-1.5 space-y-0.5">
                 <button 
-                  onClick={async () => {
-                    // Sign in with prompt="select_account"
-                    const { signInWithPopup, GoogleAuthProvider } = await import('firebase/auth');
-                    const provider = new GoogleAuthProvider();
-                    provider.setCustomParameters({ prompt: 'select_account' });
-                    try {
-                      await signInWithPopup(auth, provider);
-                      setShowProfileMenu(false);
-                    } catch (e) {
-                      console.error("Trocar de conta failed", e);
-                    }
+                  onClick={() => {
+                    onNavigate?.('settings');
+                    setShowSettingsMenu(false);
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-colors cursor-pointer"
+                  className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50 hover:text-black rounded-lg transition-all cursor-pointer font-bold flex items-center gap-2"
                 >
-                  Trocar de conta
+                  <Settings className="w-3.5 h-3.5 text-zinc-400" />
+                  Parâmetros do Sistema
                 </button>
+
                 <button 
-                  onClick={async () => {
-                    const { signOut } = await import('firebase/auth');
-                    await signOut(auth);
+                  onClick={() => {
+                    onNavigate?.('colab-auth');
+                    setShowSettingsMenu(false);
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 hover:text-red-400 transition-colors cursor-pointer"
+                  className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50 hover:text-black rounded-lg transition-all cursor-pointer font-bold flex items-center gap-2"
                 >
-                  Sair do sistema
+                  <ShieldCheck className="w-3.5 h-3.5 text-zinc-400" />
+                  Aprovar Logins / Colaboradores
+                </button>
+                
+                <button 
+                  onClick={() => {
+                    onNavigate?.('customization');
+                    setShowSettingsMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50 hover:text-black rounded-lg transition-all cursor-pointer font-bold flex items-center gap-2"
+                >
+                  <Palette className="w-3.5 h-3.5 text-zinc-400" />
+                  Personalização da Marca
+                </button>
+
+                <button 
+                  onClick={() => {
+                    onNavigate?.('audit');
+                    setShowSettingsMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50 hover:text-black rounded-lg transition-all cursor-pointer font-bold flex items-center gap-2"
+                >
+                  <Activity className="w-3.5 h-3.5 text-zinc-400" />
+                  Histórico de Auditoria
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
+
+        <button 
+          onClick={() => setShowProfileMenu(!showProfileMenu)}
+          className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center bg-zinc-100 hover:ring-2 ring-zinc-200 transition-all focus:outline-none cursor-pointer relative"
+        >
+           {photoURL ? (
+             <img src={photoURL} alt={displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+           ) : (
+             <span className="text-xs font-bold text-zinc-600">{initials}</span>
+           )}
+        </button>
+
+        {showProfileMenu && (
+          <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-zinc-200 rounded-2xl shadow-2xl py-2 z-50 animate-fade-in font-sans text-left">
+            <div className="px-4 py-2.5 border-b border-zinc-100">
+              <p className="text-xs font-bold text-zinc-900 truncate">{displayName}</p>
+              <p className="text-[10px] text-zinc-400 truncate">{email}</p>
+            </div>
+
+            <div className="py-1.5">
+              <button 
+                onClick={async () => {
+                  const { signOut } = await import('firebase/auth');
+                  await signOut(auth);
+                }}
+                className="w-full text-left px-4 py-2 text-xs text-red-500 hover:bg-red-50 transition-colors cursor-pointer font-semibold"
+              >
+                Sair do Sistema
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
     </header>
   );
 }

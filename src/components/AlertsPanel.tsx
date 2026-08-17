@@ -35,11 +35,11 @@ const mockAlerts = [
 
 export function AlertsPanel() {
   return (
-    <div className="bg-zinc-900 border border-zinc-800/50 rounded-[2rem] p-6 h-full flex flex-col">
+    <div className="bg-zinc-900 border border-zinc-200/80 rounded-[2rem] p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="font-display text-lg font-bold">Alertas Recentes</h3>
-          <p className="text-sm text-zinc-400">Auditoria de sistema (Logs Recentes)</p>
+          <p className="text-sm text-zinc-500">Auditoria de sistema (Logs Recentes)</p>
         </div>
         <button className="text-sm font-medium text-accent hover:text-accent-hover transition-colors">
           Ver Auditoria
@@ -49,7 +49,7 @@ export function AlertsPanel() {
       <div className="flex-1 space-y-4">
         {mockAlerts.map(alert => {
           let Icon = AlertCircle;
-          let iconColor = 'text-zinc-400';
+          let iconColor = 'text-zinc-500';
           let bgColor = 'bg-zinc-800';
 
           if (alert.type === 'error') {
@@ -71,16 +71,16 @@ export function AlertsPanel() {
           }
 
           return (
-            <div key={alert.id} className="flex items-start gap-4 p-4 rounded-2xl bg-zinc-950/50 border border-zinc-800/50 hover:border-zinc-700/50 transition-colors">
+            <div key={alert.id} className="flex items-start gap-4 p-4 rounded-2xl bg-white border border-zinc-200/80 hover:border-zinc-700/50 transition-colors">
               <div className={cn("p-2.5 rounded-xl shrink-0", bgColor)}>
                 <Icon className={cn("w-5 h-5", iconColor)} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
-                  <h4 className="font-medium text-zinc-200 truncate">{alert.title}</h4>
+                  <h4 className="font-medium text-zinc-800 truncate">{alert.title}</h4>
                   <span className="text-xs text-zinc-500 whitespace-nowrap ml-2">{alert.time}</span>
                 </div>
-                <p className="text-sm text-zinc-400 line-clamp-2">{alert.description}</p>
+                <p className="text-sm text-zinc-500 line-clamp-2">{alert.description}</p>
               </div>
             </div>
           );

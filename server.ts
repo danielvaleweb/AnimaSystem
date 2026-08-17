@@ -465,6 +465,199 @@ async function startServer() {
     }
   });
 
+  // Synchronize Google Cloud Billing Costs automatically from BigQuery Billing Export dataset
+  app.get("/api/gcp/billing-sync-bigquery", async (req, res) => {
+    try {
+      const { bqProjectId, bqDatasetId, bqTableId } = req.query;
+      
+      if (!bqProjectId || !bqDatasetId || !bqTableId) {
+        return res.status(400).json({ 
+          error: "Os parâmetros 'bqProjectId', 'bqDatasetId' e 'bqTableId' são obrigatórios." 
+        });
+      }
+
+      const gcpKey = process.env.GCP_SERVICE_ACCOUNT_JSON;
+      if (!gcpKey) {
+        return res.status(500).json({ 
+          error: "A variável de ambiente GCP_SERVICE_ACCOUNT_JSON não está configurada ou está vazia." 
+        });
+      }
+
+      const credentials = JSON.parse(gcpKey);
+      const { google } = await import('googleapis');
+      const { updateDoc, doc, getDocs } = await import('firebase/firestore');
+      
+      const auth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ['https://www.googleapis.com/auth/cloud-platform', 'https://www.googleapis.com/auth/bigquery.readonly'],
+      });
+
+      const bigquery = google.bigquery({ version: "v2", auth });
+      
+      // We want to query the sum of costs per project for the current invoice month
+      const today = new Date();
+      const currentInvoiceMonth = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}`; // YYYYMM format
+      
+      const bqTablePath = `${bqProjectId}.${bqDatasetId}.${bqTableId}`;
+      
+      // Standard GCP BigQuery billing query
+      const sqlQuery = `
+        SELECT 
+          project.id AS project_id, 
+          project.name AS project_name,
+          SUM(cost) AS total_cost,
+          currency
+        FROM 
+          \`${bqTablePath}\`
+        WHERE 
+          invoice.month = '${currentInvoiceMonth}'
+        GROUP BY 
+          project_id, project_name, currency
+      `;
+
+      console.log("Running BigQuery Billing Query:\n", sqlQuery);
+
+      const queryRes = await bigquery.jobs.query({
+        projectId: credentials.project_id, // We run the job in our service account project
+        requestBody: {
+          query: sqlQuery,
+          useLegacySql: false
+        }
+      });
+
+      const rows = queryRes.data.rows || [];
+      const records = rows.map((row: any) => {
+        // BigQuery query rows have values in f[index].v
+        const projectId = row.f?.[0]?.v || '';
+        const projectName = row.f?.[1]?.v || '';
+        const totalCost = parseFloat(row.f?.[2]?.v || '0');
+        const currency = row.f?.[3]?.v || 'USD';
+        return { projectId, projectName, totalCost, currency };
+      });
+
+      // Query daily costs for high-fidelity real dashboard graphics
+      let dailyRecords: any[] = [];
+      try {
+        const sqlDailyQuery = `
+          SELECT 
+            EXTRACT(DAY FROM TIMESTAMP(usage_start_time)) AS usage_day,
+            SUM(cost) AS total_cost,
+            currency
+          FROM 
+            \`${bqTablePath}\`
+          WHERE 
+            invoice.month = '${currentInvoiceMonth}'
+          GROUP BY 
+            usage_day, currency
+          ORDER BY 
+            usage_day ASC
+        `;
+        console.log("Running BigQuery Daily Billing Query:\n", sqlDailyQuery);
+        
+        const dailyQueryRes = await bigquery.jobs.query({
+          projectId: credentials.project_id,
+          requestBody: {
+            query: sqlDailyQuery,
+            useLegacySql: false
+          }
+        });
+        
+        const dailyRows = dailyQueryRes.data.rows || [];
+        dailyRecords = dailyRows.map((row: any) => {
+          const day = Number(row.f?.[0]?.v || '0');
+          const cost = parseFloat(row.f?.[1]?.v || '0');
+          const currency = row.f?.[2]?.v || 'USD';
+          
+          let costBRL = cost;
+          if (currency === 'USD') {
+            costBRL = cost * 5.20;
+          }
+          return { day, costBRL };
+        });
+      } catch (e: any) {
+        console.warn("Failed to query BigQuery daily costs:", e.message);
+      }
+
+      // Let's matching these project IDs with clients list in our local Firestore!
+      const clientsRef = collection(db, "clients");
+      const snapshot = await getDocs(clientsRef);
+      
+      let syncCount = 0;
+      const syncedClientsDetails: any[] = [];
+      const { setDoc } = await import('firebase/firestore');
+
+      for (const clientDoc of snapshot.docs) {
+        const clientData = clientDoc.data();
+        const firebaseProjectId = clientData.firebaseProjectId?.trim().toLowerCase();
+        
+        if (!firebaseProjectId) continue;
+
+        // Find matching record from BigQuery
+        const matched = records.find(r => r.projectId.trim().toLowerCase() === firebaseProjectId);
+        if (matched) {
+          // Update client in Firestore with bq fetched cost
+          const docRef = doc(db, "clients", clientDoc.id);
+          
+          let costInBRL = matched.totalCost;
+          // If currency is USD, we can multiply by current approximate exchange rate or use a standard rate
+          if (matched.currency === 'USD') {
+            costInBRL = matched.totalCost * 5.20;
+          }
+
+          const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+          const periodString = `${monthNames[today.getMonth()]} de ${today.getFullYear()} (Automático via BigQuery)`;
+
+          await updateDoc(docRef, {
+            gcpBillingCost: costInBRL,
+            gcpBillingPeriod: periodString,
+            gcpBillingLastSync: new Date().toISOString()
+          });
+
+          syncCount++;
+          syncedClientsDetails.push({
+            clientId: clientDoc.id,
+            clientName: clientData.name,
+            projectId: matched.projectId,
+            costOriginal: matched.totalCost,
+            currency: matched.currency,
+            costBRL: costInBRL
+          });
+        }
+      }
+
+      // Save daily costs summary to settings/gcp_billing_daily for the dashboard visualization
+      if (dailyRecords.length > 0) {
+        try {
+          const dailySummaryRef = doc(db, "settings", "gcp_billing_daily");
+          await setDoc(dailySummaryRef, {
+            currentMonth: currentInvoiceMonth,
+            dailyCosts: dailyRecords,
+            lastUpdated: new Date().toISOString()
+          }, { merge: true });
+          console.log("Successfully saved daily billing data to settings/gcp_billing_daily");
+        } catch (err: any) {
+          console.error("Failed to save daily billing stats to settings/gcp_billing_daily:", err.message);
+        }
+      }
+
+      return res.json({
+        success: true,
+        month: currentInvoiceMonth,
+        syncedRecordsCount: syncCount,
+        details: syncedClientsDetails,
+        rawBigQueryRecords: records,
+        dailyCosts: dailyRecords
+      });
+
+    } catch (err: any) {
+      console.error("BigQuery Billing Sync Error:", err);
+      return res.status(500).json({ 
+        error: "Falha na sincronização automatizada com o BigQuery Billing Export.",
+        details: err.message
+      });
+    }
+  });
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

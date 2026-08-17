@@ -41,8 +41,8 @@ export function LightningLogo({ className }: { className?: string }) {
       {/* Top Left Part */}
       <motion.path
         d="M14.5 2 L 4 12.5 H 13 Z"
-        fill="#97fb2e"
-        stroke="#97fb2e"
+        fill="#D7FE03"
+        stroke="#D7FE03"
         strokeWidth="1.5"
         strokeLinejoin="round"
         filter="url(#neon)"
@@ -60,9 +60,9 @@ export function LightningLogo({ className }: { className?: string }) {
         animate={{
           opacity: [0.8, 1, 0.8],
           filter: [
-            "drop-shadow(0 0 6px rgba(151,251,46,0.4))",
-            "drop-shadow(0 0 16px rgba(151,251,46,0.9))",
-            "drop-shadow(0 0 6px rgba(151,251,46,0.4))"
+            "drop-shadow(0 0 6px rgba(215,254,3,0.4))",
+            "drop-shadow(0 0 16px rgba(215,254,3,0.9))",
+            "drop-shadow(0 0 6px rgba(215,254,3,0.4))"
           ]
         }}
         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}

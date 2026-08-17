@@ -14,16 +14,57 @@
         "monthlyValue": { "type": "number" },
         "dueDate": { "type": "number" },
         "status": { "type": "string" },
+        "cpf": { "type": "string" },
+        "email": { "type": "string" },
         "createdAt": { "type": "string" },
         "ownerId": { "type": "string" }
       },
       "required": ["name", "domain", "status", "ownerId"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Represents a financial transaction.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "type": { "type": "string", "enum": ["entrada", "saida"] },
+        "clientName": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["paid", "pending", "overdue"] },
+        "method": { "type": "string", "enum": ["pix", "credit_card", "boleto", "manual"] },
+        "gateway": { "type": "string" }
+      },
+      "required": ["ownerId", "type", "clientName", "amount", "date", "status", "method", "gateway"]
+    },
+    "DismissedTransaction": {
+      "title": "DismissedTransaction",
+      "description": "Represents a dynamic virtual transaction that has been manually deleted/ignored by the user.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "date": { "type": "string" },
+        "amount": { "type": "number" },
+        "dismissedAt": { "type": "string" }
+      },
+      "required": ["ownerId", "clientId", "clientName", "date", "amount"]
     }
   },
   "firestore": {
     "/clients/{clientId}": {
       "schema": { "$ref": "#/entities/Client" },
       "description": "Stores the clients of the agency."
+    },
+    "/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Stores financial transactions."
+    },
+    "/dismissed_transactions/{dismissedId}": {
+      "schema": { "$ref": "#/entities/DismissedTransaction" },
+      "description": "Stores manually ignored/deleted virtual transactions."
     }
   }
 }
