@@ -83,6 +83,11 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
       snapshot.forEach((doc) => {
         clientsData.push({ id: doc.id, ...doc.data() } as ClientData);
       });
+      clientsData.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
       setClients(clientsData);
     }, (error) => {
       console.error("Error fetching clients:", error);
@@ -326,9 +331,9 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                 >
                   <td className="p-4 pl-6">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-2xl bg-white border border-zinc-200 flex items-center justify-center text-sm font-display font-medium text-zinc-500 overflow-hidden shrink-0">
+                      <div className="w-10 h-10 rounded-2xl bg-white border border-zinc-200 flex items-center justify-center text-sm font-display font-medium text-zinc-500 overflow-hidden shrink-0" title={client.name}>
                         {client.logoUrl ? (
-                           <img src={client.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
+                           <img src={client.logoUrl} alt="Logo" className="w-full h-full object-cover" />
                         ) : (
                            client.logoInitials
                         )}
@@ -425,9 +430,9 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                 className="bg-white border border-zinc-200/75 rounded-3xl p-5 hover:border-zinc-300 shadow-xs transition-colors cursor-pointer group flex flex-col"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 rounded-2xl bg-white border border-zinc-200 flex items-center justify-center text-lg font-display font-medium text-zinc-500 overflow-hidden shrink-0">
+                  <div className="w-12 h-12 rounded-2xl bg-white border border-zinc-200 flex items-center justify-center text-lg font-display font-medium text-zinc-500 overflow-hidden shrink-0" title={client.name}>
                     {client.logoUrl ? (
-                        <img src={client.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
+                        <img src={client.logoUrl} alt="Logo" className="w-full h-full object-cover" />
                     ) : (
                         client.logoInitials
                     )}

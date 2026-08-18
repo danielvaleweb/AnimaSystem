@@ -80,4 +80,5 @@ export interface ClientData {
   gcpBillingCost?: number;
   gcpBillingPeriod?: string;
   gcpBillingLastSync?: string;
+  createdAt?: string;
 }

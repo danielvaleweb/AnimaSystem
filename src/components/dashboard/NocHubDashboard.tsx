@@ -56,9 +56,10 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
   const [currentReminderIndex, setCurrentReminderIndex] = useState(0);
 
   useEffect(() => {
-    if (clients.length === 0) return;
+    const activeClients = clients.filter(c => c.status === 'active');
+    if (activeClients.length === 0) return;
     const interval = setInterval(() => {
-      setCurrentReminderIndex((prev) => (prev + 1) % Math.min(clients.length, 5));
+      setCurrentReminderIndex((prev) => (prev + 1) % Math.min(activeClients.length, 5));
     }, 4000);
     return () => clearInterval(interval);
   }, [clients]);
@@ -97,6 +98,11 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
     const q = query(collection(db, 'clients'), where('ownerId', '==', auth.currentUser.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClientData));
+      data.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
       setClients(data);
     });
     return unsubscribe;
@@ -166,14 +172,16 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
     }
 
     const filtered = transactions.filter(t => {
-      if (t.type !== 'entrada' || t.status !== 'paid') return false;
+      if (t.status !== 'paid') return false;
       const tDate = new Date(t.date);
       return tDate >= startDate && tDate <= endDate;
     });
 
-    const sum = filtered.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-    // Fallback se n tiver transacoes e for total, mostra um valor bonito ou 0
-    return sum > 0 ? sum : 0;
+    const sum = filtered.reduce((acc, t) => {
+      const amt = Number(t.amount) || 0;
+      return t.type === 'saida' ? acc - amt : acc + amt;
+    }, 0);
+    return sum;
   };
 
   const currentTotalBalance = calculateTotalBalance();
@@ -334,17 +342,17 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
             {/* Bottom History sub-cards */}
             <div className="space-y-2 mt-4">
               {transactions
-                .filter(t => t.type === 'entrada' && t.status === 'paid')
+                .filter(t => t.status === 'paid')
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 .slice(0, 3)
                 .map((trx) => (
                   <div key={trx.id} className="flex justify-between items-center bg-zinc-950 border border-zinc-900 p-3 rounded-2xl">
                     <div className="flex items-center gap-3">
-                      <span className="w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-xs font-bold text-[#D7FE03] font-mono shrink-0">
-                        +
+                      <span className={"w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-xs font-bold font-mono shrink-0 " + (trx.type === 'saida' ? 'text-rose-500' : 'text-[#D7FE03]')}>
+                        {trx.type === 'saida' ? '-' : '+'}
                       </span>
                       <div className="flex flex-col text-left min-w-0">
-                         <span className="text-xs font-light text-zinc-300 truncate w-full">{trx.clientName || 'Entrada'}</span>
+                         <span className="text-xs font-light text-zinc-300 truncate w-full">{trx.title || trx.clientName || (trx.type === 'saida' ? 'Saída' : 'Entrada')}</span>
                          <span className="text-[9px] text-zinc-500 font-mono">
                            {new Date(trx.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                          </span>
@@ -469,7 +477,7 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
                   
                   {/* Lembretes List (Slide 1 by 1) */}
                   <div className="flex-1 flex flex-col justify-center overflow-hidden relative min-h-[140px]">
-                    {clients.length > 0 ? clients.slice(0, 5).map((client, idx) => {
+                    {clients.filter(c => c.status === 'active').length > 0 ? clients.filter(c => c.status === 'active').slice(0, 5).map((client, idx) => {
                       const today = new Date();
                       const dueDate = new Date();
                       dueDate.setDate(client.dueDate || (today.getDate() + idx));
@@ -540,16 +548,16 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
                       {clients.length > 0 ? (
                         <>
                           {clients.slice(0, 4).map((client, idx) => (
-                            <div key={client.id} className="w-16 h-16 rounded-full bg-white border border-zinc-200 flex items-center justify-center overflow-hidden z-10" style={{ zIndex: 4 - idx }}>
+                            <div key={client.id} title={client.name} className="w-16 h-16 rounded-full bg-white border border-zinc-200 flex items-center justify-center overflow-hidden relative" style={{ zIndex: idx }}>
                               {client.logoUrl ? (
-                                <img src={client.logoUrl} alt={client.name} className="w-full h-full object-contain p-3" loading="lazy" decoding="async" />
+                                <img src={client.logoUrl} alt={client.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                               ) : (
                                 <span className="text-xl font-bold text-zinc-500">{client.name.charAt(0).toUpperCase()}</span>
                               )}
                             </div>
                           ))}
                           {clients.length > 4 && (
-                            <div className="w-16 h-16 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-lg font-bold text-zinc-500 z-0">
+                            <div className="w-16 h-16 rounded-full bg-black border-2 border-white flex items-center justify-center text-lg font-bold text-white relative" style={{ zIndex: 4 }}>
                               +{clients.length - 4}
                             </div>
                           )}
@@ -731,7 +739,7 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
             </div>
 
             {/* Bottom part of Column 3: History */}
-            <div className="bg-white border border-zinc-200/75 rounded-3xl p-6 flex flex-col justify-between flex-1">
+            <div className="bg-white border border-zinc-200/75 rounded-3xl p-6 flex flex-col justify-start flex-1">
               <div className="flex justify-between items-center pb-4 border-b border-zinc-100">
                 <span className="font-light text-black text-base tracking-wide">History</span>
                 <button 

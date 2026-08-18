@@ -51,7 +51,13 @@ export function AgendaView({ onNavigate }: { onNavigate?: (view: any, id?: strin
 
   useEffect(() => {
     const u1 = onSnapshot(collection(db, 'clients'), (snap) => {
-      setClients(snap.docs.map(d => ({id: d.id, ...d.data()} as ClientData)));
+      const data = snap.docs.map(d => ({id: d.id, ...d.data()} as ClientData));
+      data.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+      setClients(data);
     });
     const u2 = onSnapshot(collection(db, 'agenda'), (snap) => {
       setEvents(snap.docs.map(d => ({id: d.id, ...d.data()} as AgendaEvent)));

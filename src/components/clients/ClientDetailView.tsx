@@ -432,20 +432,50 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
           )}
           
           <div className="flex items-center gap-5">
-            <div className="w-16 h-16 rounded-2xl bg-white border border-zinc-300 flex items-center justify-center text-2xl font-display font-medium text-zinc-700 overflow-hidden p-1.5">
-              {client.logoUrl ? (
-                <img src={client.logoUrl} alt="Logo" className="w-full h-full object-contain" />
-              ) : (
-                client.logoInitials
+            <div className="relative group">
+              <div className="w-16 h-16 rounded-2xl bg-white border border-zinc-300 flex items-center justify-center text-2xl font-display font-medium text-zinc-700 overflow-hidden cursor-pointer">
+                {client.logoUrl ? (
+                  <img src={client.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                ) : (
+                  client.logoInitials
+                )}
+              </div>
+              
+              {client.logoUrl && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none z-50 bg-white p-2 rounded-xl shadow-2xl border border-zinc-200/80 scale-95 group-hover:scale-100 origin-top w-[140px] h-[140px] flex items-center justify-center">
+                  <img src={client.logoUrl} alt="Logo Ampliada" className="w-full h-full object-cover rounded-lg" />
+                </div>
               )}
             </div>
             <div>
               <h2 className="font-display text-xl sm:text-2xl font-bold text-zinc-900 flex flex-wrap items-center gap-2 sm:gap-3">
-                <span className="truncate max-w-[150px] sm:max-w-none">{client.name}</span>
+                <span className="truncate max-w-[150px] sm:max-w-none mr-2">{client.name}</span>
 
-                <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-800 border border-zinc-700 text-white">
-                  {client.plan}
-                </span>
+                <div className="flex bg-zinc-800 rounded-xl overflow-hidden h-8 mt-0.5">
+                  <span className="px-3.5 flex items-center justify-center text-sm font-medium text-white bg-zinc-800">
+                    {client.plan}
+                  </span>
+                  <span className={cn(
+                    "px-3.5 flex items-center justify-center gap-2 text-sm font-semibold border-2 border-solid border-zinc-800 rounded-[11px]",
+                    client.status === 'active' ? "bg-accent text-black" :
+                    client.status === 'trial' ? "bg-blue-500 text-white" :
+                    client.status === 'ended' ? "bg-zinc-500 text-white" :
+                    client.status === 'developing' ? "bg-purple-500 text-white" :
+                    "bg-rose-500 text-white"
+                  )}>
+                    {client.status === 'active' ? (
+                      <><motion.div animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}><Rocket className="w-4 h-4" /></motion.div>Ativo</>
+                    ) : client.status === 'trial' ? (
+                      <><Clock className="w-4 h-4" />{client?.trialEndDate ? 'Trial (' + Math.max(0, Math.ceil((new Date(client.trialEndDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24))) + 'd)' : 'Trial'}</>
+                    ) : client.status === 'ended' ? (
+                      <><Power className="w-4 h-4" />Encerrado</>
+                    ) : client.status === 'developing' ? (
+                      <><Code className="w-4 h-4" />Em construção</>
+                    ) : (
+                      <><Hand className="w-4 h-4" />Suspenso</>
+                    )}
+                  </span>
+                </div>
               </h2>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2 text-[11px] sm:text-sm text-zinc-500">
                 {displayDomain && (
@@ -467,37 +497,13 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
         {/* Header Actions Menu */}
         <div className="flex items-center gap-2">
           
-          {/* Status Badge (Read Only) */}
-          <div className="relative">
-              <div 
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-sm font-medium border flex items-center gap-1.5",
-                  client.status === 'active' ? "bg-accent border-accent text-black font-semibold" :
-                  client.status === 'trial' ? "bg-blue-500 border-blue-500 text-white font-semibold" :
-                  client.status === 'ended' ? "bg-zinc-500 border-zinc-500 text-white font-semibold" :
-                  client.status === 'developing' ? "bg-purple-500 border-purple-500 text-white font-semibold" :
-                  "bg-rose-500 border-rose-500 text-white font-semibold"
-                )}
-              >
-                {client.status === 'active' ? (
-                  <><Rocket className="w-3.5 h-3.5" />Ativo</>
-                ) : client.status === 'trial' ? (
-                  <><Clock className="w-3.5 h-3.5" />{client?.trialEndDate ? 'Trial - ' + Math.max(0, Math.ceil((new Date(client.trialEndDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24))) + ' dias restantes' : 'Trial'}</>
-                ) : client.status === 'ended' ? (
-                  <><Power className="w-3.5 h-3.5" />Encerrado</>
-                ) : client.status === 'developing' ? (
-                  <><Code className="w-3.5 h-3.5" />Em construção</>
-                ) : (
-                  <><Hand className="w-3.5 h-3.5" />Suspenso</>
-                )}
-              </div>
-          </div>
+
 
           {!isClientView && (
             <div className="relative">
               <button 
                 onClick={() => setShowMenu(!showMenu)}
-                className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-500 hover:text-zinc-100 transition-colors cursor-pointer"
+                className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-500 hover:text-zinc-900 transition-colors cursor-pointer"
               >
                 <MoreVertical className="w-5 h-5" />
               </button>
@@ -539,24 +545,7 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
         />
       )}
 
-      {/* Navigation Tabs */}
-      <div className="bg-white border border-zinc-200/80 rounded-2xl p-1.5 flex overflow-x-auto hide-scrollbar">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap cursor-pointer",
-              activeTab === tab.id 
-                ? "bg-zinc-800 text-zinc-100" 
-                : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50"
-            )}
-          >
-            <tab.icon className={cn("w-4 h-4", activeTab === tab.id ? "text-accent" : "text-zinc-500")} />
-            {tab.label}
-          </button>
-        ))}
-      </div>
+
 
       {/* Tab Content */}
       <div className="flex-1">

@@ -139,6 +139,11 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
     const q = query(collection(db, 'clients'), where('ownerId', '==', auth.currentUser.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClientData));
+      data.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
       setClients(data);
     });
     return () => unsubscribe();
@@ -605,6 +610,34 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
       setCsvSuccessCount(null);
       setCsvPeriod("");
     }, 3000);
+  };
+
+  const handleBqSync = async () => {
+    if (!bqProjectId || !bqDatasetId || !bqTableId) return;
+    setIsBqSyncing(true);
+    setBqError('');
+    try {
+      // Direct query emulation / API call
+      const res = await fetch('/api/gcp/bigquery/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: bqProjectId,
+          datasetId: bqDatasetId,
+          tableId: bqTableId
+        })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Falha ao consultar BigQuery.');
+      }
+      const result = await res.json();
+      setBqResult(result);
+    } catch (err: any) {
+      setBqError(err.message || 'Erro ao sincronizar com BigQuery.');
+    } finally {
+      setIsBqSyncing(false);
+    }
   };
 
   return (

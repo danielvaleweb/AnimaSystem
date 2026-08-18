@@ -1,0 +1,158 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Upload, Loader2, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { ClientData } from '../../types';
+import { ref, uploadBytesResumable, getDownloadURL, getStorage, deleteObject } from 'firebase/storage';
+import { app, db } from '../../lib/firebase';
+import { ConfirmationModal } from '../ConfirmationModal';
+import { motion } from 'motion/react';
+
+interface ClientModalProps {
+  client: ClientData | null;
+  onClose: () => void;
+  onSave: (clientData: ClientData) => void;
+}
+
+export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
+  const [formData, setFormData] = useState<Partial<ClientData>>({
+    name: '',
+    responsible: '',
+    logoInitials: '',
+    domain: '',
+    projectName: '',
+    plan: 'Starter',
+    firebaseProjectId: '',
+    firebaseDatabaseName: '(default)',
+    firebaseSdkConfig: '',
+    monthlyValue: 290,
+    dueDate: 5,
+    status: 'active'
+  });
+  const [uploading, setUploading] = useState(false);
+  const [showRemoveLogoConfirm, setShowRemoveLogoConfirm] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (client) setFormData(client);
+  }, [client]);
+
+  useEffect(() => {
+    if (formData.firebaseSdkConfig) {
+      const projectIdMatch = formData.firebaseSdkConfig.match(/projectId['"]?\s*:\s*['"]([^'"]+)['"]/);
+      if (projectIdMatch && projectIdMatch[1] && !formData.firebaseProjectId) {
+        setFormData(prev => ({ ...prev, firebaseProjectId: projectIdMatch[1] }));
+      }
+    }
+  }, [formData.firebaseSdkConfig]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ 
+      ...prev, 
+      [name]: value 
+    }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name) {
+      alert("Por favor, preencha o Nome da Empresa.");
+      return;
+    }
+    if (!formData.responsible) {
+      alert("Por favor, preencha o Nome do Responsável.");
+      return;
+    }
+    
+    // Cast number fields properly
+    formData.monthlyValue = Number(formData.monthlyValue) || 0;
+    formData.dueDate = Number(formData.dueDate) || 1;
+
+    // Generate initials if not provided
+    if (!formData.logoInitials) {
+      formData.logoInitials = formData.name.substring(0, 2).toUpperCase();
+    }
+    
+    // Try to parse firebaseSdkConfig
+    if (formData.firebaseSdkConfig) {
+      try {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(formData.firebaseSdkConfig);
+        } catch (e) {
+          const match = formData.firebaseSdkConfig.match(/{\s*(?:['"]?apiKey['"]?\s*:[\s\S]+)\s*}/);
+          if (match) {
+            const getObj = new Function(`return ${match[0]}`);
+            parsed = getObj();
+          }
+        }
+        if (parsed && typeof parsed === 'object') {
+          formData.parsedFirebaseConfig = parsed;
+          if (parsed.projectId && !formData.firebaseProjectId) {
+            formData.firebaseProjectId = parsed.projectId;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not parse SDK config', err);
+      }
+    }
+    
+    onSave(formData as ClientData);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const hubStorage = getStorage(app, 'gs://animahub.firebasestorage.app');
+      const storageRef = ref(hubStorage, `clientes/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file, { contentType: file.type, cacheControl: 'public, max-age=31536000' });
+
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          null,
+          (error) => reject(error),
+          () => resolve()
+        );
+      });
+
+      const url = await getDownloadURL(storageRef);
+      setFormData(prev => ({ ...prev, logoUrl: url }));
+    } catch (err: any) {
+      console.error('Failed to upload logo', err);
+      alert(`Erro ao fazer upload da imagem: ${err.message}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!formData.logoUrl) return;
+    
+    try {
+      setUploading(true);
+      const hubStorage = getStorage(app, 'gs://animahub.firebasestorage.app');
+      const fileRef = ref(hubStorage, formData.logoUrl);
+      await deleteObject(fileRef).catch(e => console.error("Logo delete error:", e));
+      
+      setFormData(prev => ({ ...prev, logoUrl: '' }));
+      
+      // Immediately save to Firestore to keep it in sync since we deleted from Storage
+      if (client?.id) {
+        const { doc, updateDoc } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'clients', client.id), {
+          logoUrl: ''
+        });
+      }
+    } catch (err) {
+      console.error('Failed to remove logo', err);
+    } finally {
+      setUploading(false);
+      setShowRemoveLogoConfirm(false);
+    }
+  };
+
+  
