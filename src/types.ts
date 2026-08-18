@@ -43,7 +43,7 @@ export interface ClientData {
   name: string;
   logoInitials: string;
   responsible: string;
-  plan: 'Nenhum' | 'Starter' | 'Pro' | 'Enterprise';
+  plan: 'Nenhum' | 'Starter' | 'Profissional' | 'Enterprise';
   domain: string;
   projectName?: string;
   firebaseProjectId: string;

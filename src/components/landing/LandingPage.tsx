@@ -527,17 +527,17 @@ export function LandingPage({ onEnter }: LandingPageProps) {
   const [plansTitle, setPlansTitle] = useState("Planos flexíveis para cada estágio do seu negócio");
   const [plansDescription, setPlansDescription] = useState("Comece pequeno ou escale rapidamente. Escolha o plano que melhor se adapta às suas necessidades e ao seu momento no mercado.");
   const [plan1Name, setPlan1Name] = useState("Starter");
-  const [plan1Desc, setPlan1Desc] = useState("Para freelancers e microsaas lidarem com até 3 apps ativos.");
-  const [plan1Price, setPlan1Price] = useState("Grátis");
-  const [plan1Features, setPlan1Features] = useState("Até 3 Clientes\nMonito. Firebase (Limitado)\nIntegração Asaas Básica");
-  const [plan2Name, setPlan2Name] = useState("Professional");
-  const [plan2Desc, setPlan2Desc] = useState("A ferramenta completa para agências lidarem com escala.");
-  const [plan2Price, setPlan2Price] = useState("R$ 149");
-  const [plan2Features, setPlan2Features] = useState("Clientes Ilimitados\nNOC Firestore Em Tempo Real\nSistema de Tickets L1/L2\nFaturamento Automático PIX\nMúltiplas Contas Admin");
+  const [plan1Desc, setPlan1Desc] = useState("Para empresas que precisam de uma ferramenta pronta para organizar sua operação.");
+  const [plan1Price, setPlan1Price] = useState("R$ 60/mês");
+  const [plan1Features, setPlan1Features] = useState("Sistema pronto para uso\nCadastro e gerenciamento de clientes\nClientes ilimitados\nSistema de vendas\nCadastro de produtos e/ou serviços\nControle de operações\nPainel administrativo\nAcesso pelo celular e computador\nAtualizações do sistema\nHospedagem inclusa\nBanco de dados incluso\nSuporte ao cliente");
+  const [plan2Name, setPlan2Name] = useState("Profissional");
+  const [plan2Desc, setPlan2Desc] = useState("Para empresas que precisam de um site profissional, landing page ou uma solução digital enxuta e bem estruturada.");
+  const [plan2Price, setPlan2Price] = useState("R$ 149/mês");
+  const [plan2Features, setPlan2Features] = useState("Site desenvolvido sob medida\nProjeto personalizado\nEstrutura profissional de páginas\nLanding pages\nDesign responsivo\nFormulário de contato\nIntegração com WhatsApp\nIntegração com redes sociais\nOtimização para Google (SEO)\nHospedagem inclusa\nDomínio personalizado\nCertificado SSL\nPainel administrativo, quando aplicável\nAtualizações e manutenção\nSuporte por 1 ano\nClientes ilimitados");
   const [plan3Name, setPlan3Name] = useState("Enterprise");
-  const [plan3Desc, setPlan3Desc] = useState("Monitoramento on-premises em instâncias separadas.");
-  const [plan3Price, setPlan3Price] = useState("Custom");
-  const [plan3Features, setPlan3Features] = useState("Implantação Self-hosted\nExportação BigQuery Dedicada\nSLA & Suporte 24/7");
+  const [plan3Desc, setPlan3Desc] = useState("Para empresas que precisam de sistemas complexos, aplicativos, plataformas e soluções desenvolvidas especificamente para sua operação.");
+  const [plan3Price, setPlan3Price] = useState("Sob consulta");
+  const [plan3Features, setPlan3Features] = useState("Sistemas personalizados\nAplicativos Android e iOS\nPlataformas web\nPainéis administrativos avançados\nGestão de usuários e permissões\nSistemas de vendas\nIntegração com APIs\nIntegração com sistemas externos\nGPS e geolocalização (Beta)\nAutomação de processos\nMonitoramento em tempo real\nBanco de dados escalável\nInfraestrutura personalizada\nSegurança avançada\nBackup e recuperação\nAnalytics e indicadores\nIntegrações com pagamentos\nArquitetura preparada para escala\nSuporte e manutenção personalizados");
 
   // 5. FAQ
   const [faqTitle, setFaqTitle] = useState("Perguntas Frequentes");
@@ -607,18 +607,22 @@ export function LandingPage({ onEnter }: LandingPageProps) {
         if (data.plansTag) setPlansTag(data.plansTag);
         if (data.plansTitle) setPlansTitle(data.plansTitle);
         if (data.plansDescription) setPlansDescription(data.plansDescription);
-        if (data.plan1Name) setPlan1Name(data.plan1Name);
-        if (data.plan1Desc) setPlan1Desc(data.plan1Desc);
-        if (data.plan1Price) setPlan1Price(data.plan1Price);
-        if (data.plan1Features) setPlan1Features(data.plan1Features);
-        if (data.plan2Name) setPlan2Name(data.plan2Name);
-        if (data.plan2Desc) setPlan2Desc(data.plan2Desc);
-        if (data.plan2Price) setPlan2Price(data.plan2Price);
-        if (data.plan2Features) setPlan2Features(data.plan2Features);
-        if (data.plan3Name) setPlan3Name(data.plan3Name);
-        if (data.plan3Desc) setPlan3Desc(data.plan3Desc);
-        if (data.plan3Price) setPlan3Price(data.plan3Price);
-        if (data.plan3Features) setPlan3Features(data.plan3Features);
+        
+        // Migrate old defaults to new defaults
+        if (data.plan1Name && data.plan1Name !== "Starter") setPlan1Name(data.plan1Name);
+        if (data.plan1Desc && data.plan1Desc !== "Para freelancers e microsaas lidarem com até 3 apps ativos.") setPlan1Desc(data.plan1Desc);
+        if (data.plan1Price && data.plan1Price !== "Grátis") setPlan1Price(data.plan1Price);
+        if (data.plan1Features && data.plan1Features !== "Até 3 Clientes\nMonito. Firebase (Limitado)\nIntegração Asaas Básica") setPlan1Features(data.plan1Features);
+        
+        if (data.plan2Name && data.plan2Name !== "Profissional") setPlan2Name(data.plan2Name);
+        if (data.plan2Desc && data.plan2Desc !== "A ferramenta completa para agências lidarem com escala.") setPlan2Desc(data.plan2Desc);
+        if (data.plan2Price && data.plan2Price !== "R$ 149") setPlan2Price(data.plan2Price);
+        if (data.plan2Features && data.plan2Features !== "Clientes Ilimitados\nNOC Firestore Em Tempo Real\nSistema de Tickets L1/L2\nFaturamento Automático PIX\nMúltiplas Contas Admin") setPlan2Features(data.plan2Features);
+        
+        if (data.plan3Name && data.plan3Name !== "Enterprise") setPlan3Name(data.plan3Name);
+        if (data.plan3Desc && data.plan3Desc !== "Monitoramento on-premises em instâncias separadas.") setPlan3Desc(data.plan3Desc);
+        if (data.plan3Price && data.plan3Price !== "Custom") setPlan3Price(data.plan3Price);
+        if (data.plan3Features && data.plan3Features !== "Implantação Self-hosted\nExportação BigQuery Dedicada\nSLA & Suporte 24/7") setPlan3Features(data.plan3Features);
 
         // 5. FAQ
         if (data.faqTitle) setFaqTitle(data.faqTitle);
@@ -703,7 +707,7 @@ export function LandingPage({ onEnter }: LandingPageProps) {
                  <span className="text-[13px] font-bold text-white">Olá, {currentUserName}!</span>
                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-400 mt-1">
                    <button 
-                     onClick={() => navigate(currentUserPortalLink)}
+                     type="button" onClick={(e) => { e.preventDefault(); navigate(currentUserPortalLink); }}
                      className="hover:text-[#D7FE03] transition-colors cursor-pointer uppercase tracking-widest font-bold"
                    >
                      Meus pedidos
@@ -892,7 +896,7 @@ export function LandingPage({ onEnter }: LandingPageProps) {
               <motion.button 
                 whileHover={{ scale: 1.05, boxShadow: "0 10px 30px -10px rgba(215,254,3,0.3)" }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => navigate('/portfolio')} 
+                type="button" onClick={(e) => { e.preventDefault(); navigate('/portfolio'); }} 
                 className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 backdrop-blur-3xl backdrop-saturate-[3] backdrop-brightness-110 border border-white/20 text-white font-medium px-8 py-4 rounded-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.2),0_8px_32px_rgba(0,0,0,0.3)] text-xs tracking-widest uppercase transition-all duration-300 cursor-pointer"
               >
                 Ver Portfólio
@@ -1410,24 +1414,32 @@ export function LandingPage({ onEnter }: LandingPageProps) {
                     {plan1Price}
                   </div>
                   <ul className="space-y-4 mb-10">
-                    {plan1Features.split('\n').filter(Boolean).map((feature, i) => (
+                    {plan1Features.split('\n').filter(Boolean).slice(0, 10).map((feature, i) => (
                       <li key={i} className="flex items-center gap-3 text-zinc-300 text-sm font-medium">
                         <Check className="w-4 h-4 text-[#D7FE03] shrink-0" /> {feature}
                       </li>
                     ))}
                   </ul>
                 </div>
-                <motion.button 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setIsModalOpen(true)}
-                  className="w-full py-3.5 rounded-full bg-[#18191a] hover:bg-zinc-800 border border-zinc-850 text-white font-semibold text-xs uppercase tracking-wider transition-all duration-200 mt-6 cursor-pointer"
-                >
-                  Iniciar Gratuitamente
-                </motion.button>
+                <div className="flex flex-col gap-3 mt-6">
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/planos/starter'); }}
+                    className="w-full py-3.5 rounded-full bg-[#18191a] hover:bg-zinc-800 border border-zinc-850 text-white font-semibold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer text-center"
+                  >
+                    Ver Benefícios
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/adicionar-servicos?plan=starter'); }}
+                    className="w-full py-3.5 rounded-full bg-zinc-100 hover:bg-white text-zinc-900 font-bold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer text-center"
+                  >
+                    Assinar Direto
+                  </button>
+                </div>
               </motion.div>
 
-              {/* Professional */}
+              {/* Profissional */}
               <motion.div 
                 initial={{ opacity: 0, y: 50 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -1453,21 +1465,29 @@ export function LandingPage({ onEnter }: LandingPageProps) {
                     </div>
                   </div>
                   <ul className="space-y-4 mb-10">
-                    {plan2Features.split('\n').filter(Boolean).map((feature, i) => (
+                    {plan2Features.split('\n').filter(Boolean).slice(0, 10).map((feature, i) => (
                       <li key={i} className="flex items-center gap-3 text-zinc-200 text-sm font-medium">
                         <Check className="w-4 h-4 text-[#D7FE03] shrink-0" /> {feature}
                       </li>
                     ))}
                   </ul>
                 </div>
-                <motion.button 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setIsModalOpen(true)}
-                  className="w-full py-3.5 rounded-full bg-[#D7FE03] hover:bg-[#c4e602] text-zinc-950 font-bold text-xs uppercase tracking-wider transition-all duration-200 shadow-[0_0_20px_rgba(215,254,3,0.2)] mt-6 cursor-pointer"
-                >
-                  Assinar Pro
-                </motion.button>
+                <div className="flex flex-col gap-3 mt-6">
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/planos/profissional'); }}
+                    className="w-full py-3.5 rounded-full bg-[#18191a] hover:bg-zinc-800 border border-zinc-850 text-white font-semibold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer text-center"
+                  >
+                    Ver Benefícios
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/adicionar-servicos?plan=profissional'); }}
+                    className="w-full py-3.5 rounded-full bg-[#D7FE03] hover:bg-[#c4e602] text-zinc-950 font-bold text-xs uppercase tracking-wider transition-all duration-200 shadow-[0_0_20px_rgba(215,254,3,0.2)] cursor-pointer text-center"
+                  >
+                    Assinar Direto
+                  </button>
+                </div>
               </motion.div>
 
               {/* Enterprise */}
@@ -1489,21 +1509,29 @@ export function LandingPage({ onEnter }: LandingPageProps) {
                     {plan3Price}
                   </div>
                   <ul className="space-y-4 mb-10">
-                    {plan3Features.split('\n').filter(Boolean).map((feature, i) => (
+                    {plan3Features.split('\n').filter(Boolean).slice(0, 10).map((feature, i) => (
                       <li key={i} className="flex items-center gap-3 text-zinc-300 text-sm font-medium">
                         <Check className="w-4 h-4 text-[#D7FE03] shrink-0" /> {feature}
                       </li>
                     ))}
                   </ul>
                 </div>
-                <motion.button 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setIsModalOpen(true)}
-                  className="w-full py-3.5 rounded-full bg-[#18191a] hover:bg-zinc-800 border border-zinc-850 text-white font-semibold text-xs uppercase tracking-wider transition-all duration-200 mt-6 cursor-pointer"
-                >
-                  Falar com Vendas
-                </motion.button>
+                <div className="flex flex-col gap-3 mt-6">
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/planos/enterprise'); }}
+                    className="w-full py-3.5 rounded-full bg-[#18191a] hover:bg-zinc-800 border border-zinc-850 text-white font-semibold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer text-center"
+                  >
+                    Ver Benefícios
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/checkout?plan=enterprise&support=true'); }}
+                    className="w-full py-3.5 rounded-full bg-zinc-100 hover:bg-white text-zinc-900 font-bold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer text-center"
+                  >
+                    Assinar Direto
+                  </button>
+                </div>
               </motion.div>
 
            </div>

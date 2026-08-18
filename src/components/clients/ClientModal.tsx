@@ -562,7 +562,7 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
                     className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 outline-none focus:border-accent text-zinc-900 text-sm transition-all shadow-2xs cursor-pointer"
                   >
                     <option value="Starter">Starter</option>
-                    <option value="Pro">Pro</option>
+                    <option value="Profissional">Profissional</option>
                     <option value="Enterprise">Enterprise</option>
                     <option value="Nenhum">Nenhum (Sem contrato ativo)</option>
                   </select>

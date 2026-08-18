@@ -1,0 +1,2 @@
+sed -i 's/const handleSubscribe = () => {/const handleSubscribe = () => {\n    if (planName === '\'enterprise\'') {\n      navigate(`\/checkout?plan=${planName}\&support=true`);\n    } else {\n      navigate(`\/adicionar-servicos?plan=${planName}`);\n    }\n  };\n\n  \/*/' src/components/plans/PlanDetailView.tsx
+sed -i 's/const proceedToCheckout = (withSupport: boolean) => {/*\/\n  const proceedToCheckout = (withSupport: boolean) => {/' src/components/plans/PlanDetailView.tsx

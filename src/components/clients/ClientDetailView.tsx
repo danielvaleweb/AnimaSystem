@@ -219,7 +219,7 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
     (client.complement && client.complement.trim() !== '')
   );
 
-  const handleHirePlan = async (chosenPlan: 'Starter' | 'Pro' | 'Enterprise', price: number) => {
+  const handleHirePlan = async (chosenPlan: 'Starter' | 'Profissional' | 'Enterprise', price: number) => {
     setHiringPlan(chosenPlan);
     try {
       await updateDoc(doc(db, 'clients', client.id), {
@@ -309,13 +309,14 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                   <div>
                     <h3 className="text-xl font-bold text-black mb-2">Starter</h3>
                     <p className="text-zinc-500 text-xs leading-relaxed min-h-[35px] mb-6 font-light">
-                      Ideal para freelancers lidarem com monitoramento básico.
+                      Para empresas que precisam de uma ferramenta pronta para organizar sua operação.
                     </p>
-                    <div className="mb-6 font-extrabold text-3xl text-black tracking-tight">
-                      Grátis
+                    <div className="mb-6 flex items-baseline gap-1">
+                      <span className="text-3xl font-extrabold text-black tracking-tight">R$ 60</span>
+                      <span className="text-zinc-500 text-xs">/mês</span>
                     </div>
                     <ul className="space-y-3.5 mb-8">
-                      {['Até 3 Clientes', 'Monito. Firebase Limitado', 'Integração Asaas Básica', 'Suporte Comercial'].map((f, i) => (
+                      {['Sistema pronto para uso', 'Cadastro e gerenciamento de clientes', 'Clientes ilimitados', 'Sistema de vendas', 'Cadastro de produtos e/ou serviços', 'Controle de operações', 'Painel administrativo', 'Acesso pelo celular e computador', 'Atualizações do sistema', 'Hospedagem inclusa', 'Banco de dados incluso', 'Suporte ao cliente'].map((f, i) => (
                         <li key={i} className="flex items-center gap-2.5 text-zinc-700 text-xs font-medium">
                           <Check className="w-4 h-4 text-[#D7FE03] shrink-0" /> {f}
                         </li>
@@ -324,7 +325,7 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                   </div>
                   <button 
                     disabled={hiringPlan !== null}
-                    onClick={() => handleHirePlan('Starter', 0)}
+                    onClick={() => handleHirePlan('Starter', 60)}
                     className="w-full py-3 rounded-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-750 text-black font-semibold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
                     {hiringPlan === 'Starter' ? (
@@ -333,17 +334,17 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                   </button>
                 </div>
 
-                {/* Professional */}
+                {/* Profissional */}
                 <div className="bg-white border-2 border-[#D7FE03] rounded-[2rem] p-8 flex flex-col justify-between hover:scale-[1.01] transition-all relative shadow-[0_0_40px_rgba(215,254,3,0.1)]">
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#D7FE03] text-zinc-950 text-[10px] font-extrabold uppercase tracking-widest px-4 py-1 rounded-full shadow-lg">
                     Mais Popular
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-black mb-2 flex items-center gap-2">
-                      Professional <Sparkles className="w-4 h-4 text-[#D7FE03] fill-[#D7FE03]" />
+                      Profissional <Sparkles className="w-4 h-4 text-[#D7FE03] fill-[#D7FE03]" />
                     </h3>
                     <p className="text-zinc-500 text-xs leading-relaxed min-h-[35px] mb-6 font-light">
-                      A ferramenta completa para agências de software.
+                      Para empresas que precisam de um site profissional, landing page ou uma solução digital enxuta e bem estruturada.
                     </p>
                     <div className="mb-6 flex items-baseline gap-1">
                       <span className="text-3xl font-extrabold text-black tracking-tight">R$ 149</span>
@@ -351,11 +352,22 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                     </div>
                     <ul className="space-y-3.5 mb-8">
                       {[
-                        'Clientes Ilimitados',
-                        'NOC Firestore Em Tempo Real',
-                        'Sistema de Tickets L1/L2',
-                        'Faturamento Automático PIX',
-                        'Múltiplas Contas Admin'
+                        'Site desenvolvido sob medida',
+                        'Projeto personalizado',
+                        'Estrutura profissional de páginas',
+                        'Landing pages',
+                        'Design responsivo',
+                        'Formulário de contato',
+                        'Integração com WhatsApp',
+                        'Integração com redes sociais',
+                        'Otimização para Google (SEO)',
+                        'Hospedagem inclusa',
+                        'Domínio personalizado',
+                        'Certificado SSL',
+                        'Painel administrativo, quando aplicável',
+                        'Atualizações e manutenção',
+                        'Suporte por 1 ano',
+                        'Clientes ilimitados'
                       ].map((f, i) => (
                         <li key={i} className="flex items-center gap-2.5 text-zinc-800 text-xs font-medium">
                           <Check className="w-4 h-4 text-[#D7FE03] shrink-0" /> {f}
@@ -365,12 +377,12 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                   </div>
                   <button 
                     disabled={hiringPlan !== null}
-                    onClick={() => handleHirePlan('Pro', 149)}
+                    onClick={() => handleHirePlan('Profissional', 149)}
                     className="w-full py-3 rounded-full bg-[#D7FE03] hover:bg-[#c4e602] text-zinc-950 font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(215,254,3,0.2)] cursor-pointer flex items-center justify-center gap-2"
                   >
-                    {hiringPlan === 'Pro' ? (
+                    {hiringPlan === 'Profissional' ? (
                       <div className="w-4 h-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin"></div>
-                    ) : 'Assinar Professional'}
+                    ) : 'Assinar Profissional'}
                   </button>
                 </div>
 
@@ -379,18 +391,32 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                   <div>
                     <h3 className="text-xl font-bold text-black mb-2">Enterprise</h3>
                     <p className="text-zinc-500 text-xs leading-relaxed min-h-[35px] mb-6 font-light">
-                      NOC dedicado e suporte prioritário 24/7.
+                      Para empresas que precisam de sistemas complexos, aplicativos, plataformas e soluções desenvolvidas especificamente para sua operação.
                     </p>
-                    <div className="mb-6 flex items-baseline gap-1">
-                      <span className="text-3xl font-extrabold text-black tracking-tight">R$ 499</span>
-                      <span className="text-zinc-500 text-xs">/mês</span>
+                    <div className="mb-6 font-extrabold text-3xl text-black tracking-tight">
+                      Sob consulta
                     </div>
                     <ul className="space-y-3.5 mb-8">
                       {[
-                        'Implantação Self-hosted',
-                        'Exportação BigQuery Dedicada',
-                        'SLA & Suporte NOC 24/7',
-                        'Servidores Dedicados'
+                        'Sistemas personalizados',
+                        'Aplicativos Android e iOS',
+                        'Plataformas web',
+                        'Painéis administrativos avançados',
+                        'Gestão de usuários e permissões',
+                        'Sistemas de vendas',
+                        'Integração com APIs',
+                        'Integração com sistemas externos',
+                        'GPS e geolocalização (Beta)',
+                        'Automação de processos',
+                        'Monitoramento em tempo real',
+                        'Banco de dados escalável',
+                        'Infraestrutura personalizada',
+                        'Segurança avançada',
+                        'Backup e recuperação',
+                        'Analytics e indicadores',
+                        'Integrações com pagamentos',
+                        'Arquitetura preparada para escala',
+                        'Suporte e manutenção personalizados'
                       ].map((f, i) => (
                         <li key={i} className="flex items-center gap-2.5 text-zinc-700 text-xs font-medium">
                           <Check className="w-4 h-4 text-[#D7FE03] shrink-0" /> {f}
@@ -400,7 +426,7 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                   </div>
                   <button 
                     disabled={hiringPlan !== null}
-                    onClick={() => handleHirePlan('Enterprise', 499)}
+                    onClick={() => handleHirePlan('Enterprise', 0)}
                     className="w-full py-3 rounded-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-750 text-black font-semibold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
                     {hiringPlan === 'Enterprise' ? (

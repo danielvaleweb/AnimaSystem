@@ -618,18 +618,11 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
     setBqError('');
     try {
       // Direct query emulation / API call
-      const res = await fetch('/api/gcp/bigquery/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: bqProjectId,
-          datasetId: bqDatasetId,
-          tableId: bqTableId
-        })
-      });
+      const url = `/api/gcp/billing-sync-bigquery?bqProjectId=${encodeURIComponent(bqProjectId)}&bqDatasetId=${encodeURIComponent(bqDatasetId)}&bqTableId=${encodeURIComponent(bqTableId)}`;
+      const res = await fetch(url);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || 'Falha ao consultar BigQuery.');
+        throw new Error(data.error || data.details || 'Falha ao consultar BigQuery.');
       }
       const result = await res.json();
       setBqResult(result);

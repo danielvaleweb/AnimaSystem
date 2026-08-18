@@ -577,7 +577,7 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                               className="absolute left-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-sm z-40 py-1 overflow-hidden min-w-[130px]"
                               style={{ transformOrigin: 'top left' }}
                             >
-                              {['Starter', 'Pro', 'Enterprise'].map(planName => (
+                              {['Starter', 'Profissional', 'Enterprise'].map(planName => (
                                 <button
                                   key={planName}
                                   type="button"

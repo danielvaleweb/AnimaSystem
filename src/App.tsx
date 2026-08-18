@@ -18,6 +18,10 @@ import { AgendaView } from './components/agenda/AgendaView';
 import { NocHubDashboard } from './components/dashboard/NocHubDashboard';
 import { LandingPage } from './components/landing/LandingPage';
 import { PortfolioPage } from './components/portfolio/PortfolioPage';
+import PlanDetailView from './components/plans/PlanDetailView';
+import CheckoutView from "./components/plans/CheckoutView";
+import AddServicesView from "./components/plans/AddServicesView";
+import ClientAdminView from "./components/plans/ClientAdminView";
 import { CollaboratorAuthView } from './components/CollaboratorAuthView';
 import { 
   DollarSign, 
@@ -182,6 +186,14 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<Navigate to={`/cliente/${clientDocId}`} replace />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
+        <Route path="/planos/:planName" element={<PlanDetailView />} />
+        <Route path="/plano/:planName" element={<PlanDetailView />} />
+        <Route path="/plano-starter" element={<PlanDetailView />} />
+        <Route path="/plano-profissional" element={<PlanDetailView />} />
+        <Route path="/plano-enterprise" element={<PlanDetailView />} />
+        <Route path="/checkout" element={<CheckoutView />} />
+        <Route path="/adicionar-servicos" element={<AddServicesView />} />
+        <Route path="/admin-cliente" element={<ClientAdminView />} />
         <Route path="/cliente/:clientId" element={
           <ClientPortalLayout>
             <ClientPortalRoute clientDocId={clientDocId!} />
@@ -198,6 +210,14 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<LandingPage onEnter={() => {}} />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
+        <Route path="/planos/:planName" element={<PlanDetailView />} />
+        <Route path="/plano/:planName" element={<PlanDetailView />} />
+        <Route path="/plano-starter" element={<PlanDetailView />} />
+        <Route path="/plano-profissional" element={<PlanDetailView />} />
+        <Route path="/plano-enterprise" element={<PlanDetailView />} />
+        <Route path="/checkout" element={<CheckoutView />} />
+        <Route path="/adicionar-servicos" element={<AddServicesView />} />
+        <Route path="/admin-cliente" element={<ClientAdminView />} />
         <Route path="/admin" element={<MainLayout currentView="dashboard" onNavigate={handleNavigate}><DashboardHome onNavigate={handleNavigate} /></MainLayout>} />
         <Route path="/leads" element={<MainLayout currentView="leads" onNavigate={handleNavigate}><LeadsView /></MainLayout>} />
         <Route path="/clientes" element={<MainLayout currentView="clients" onNavigate={handleNavigate}><ClientsView onClientSelect={handleNavigateToClientDetail} /></MainLayout>} />
@@ -221,6 +241,14 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<LandingPage onEnter={() => {}} />} />
       <Route path="/portfolio" element={<PortfolioPage />} />
+      <Route path="/planos/:planName" element={<PlanDetailView />} />
+      <Route path="/plano/:planName" element={<PlanDetailView />} />
+      <Route path="/plano-starter" element={<PlanDetailView />} />
+      <Route path="/plano-profissional" element={<PlanDetailView />} />
+      <Route path="/plano-enterprise" element={<PlanDetailView />} />
+      <Route path="/checkout" element={<CheckoutView />} />
+      <Route path="/adicionar-servicos" element={<AddServicesView />} />
+      <Route path="/admin-cliente" element={<ClientAdminView />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

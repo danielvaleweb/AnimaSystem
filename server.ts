@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, query, where, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import fs from "fs";
 import cors from "cors";
 import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
@@ -12,6 +12,45 @@ const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json
 const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf8"));
 const appFirebase = initializeApp(firebaseConfig);
 const db = getFirestore(appFirebase, firebaseConfig.firestoreDatabaseId);
+
+// Helper to build robust Asaas API URLs with proper base and query parameters
+function getAsaasApiUrl(endpoint: string, queryParams?: Record<string, string | number | boolean | undefined>): string {
+  let raw = (process.env.ASAAS_BASE_URL || "https://api-sandbox.asaas.com/v3").trim();
+  // Strip single/double quotes and backticks
+  raw = raw.replace(/^[`'"]+|[`'"]+$/g, "").trim();
+
+  // If empty or invalid, fallback to official sandbox API
+  if (!raw || (!raw.startsWith("http://") && !raw.startsWith("https://"))) {
+    if (raw.includes("asaas.com")) {
+      raw = `https://${raw}`;
+    } else {
+      raw = "https://api-sandbox.asaas.com/v3";
+    }
+  }
+
+  // Remove trailing slashes
+  raw = raw.replace(/\/+$/, "");
+
+  // Guarantee /v3 is at the end of the base URL
+  if (!raw.endsWith("/v3")) {
+    if (!raw.includes("/v3")) {
+      raw = `${raw}/v3`;
+    }
+  }
+
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const url = new URL(`${raw}${cleanEndpoint}`);
+
+  if (queryParams) {
+    for (const [key, value] of Object.entries(queryParams)) {
+      if (value !== undefined && value !== null && value !== "") {
+        url.searchParams.set(key, String(value));
+      }
+    }
+  }
+
+  return url.toString();
+}
 
 async function startServer() {
   const app = express();
@@ -126,6 +165,540 @@ async function startServer() {
     } catch (error: any) {
       console.error(error);
       return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Asaas Create Checkout & Customer API
+  app.post("/api/asaas/create-checkout", async (req, res) => {
+    try {
+      const { planId, items, coupon, customer, ownerId, userId } = req.body;
+
+      if (!customer || !customer.name || !customer.cpf) {
+        return res.status(400).json({ error: "Dados do cliente incompletos (nome e CPF são obrigatórios)." });
+      }
+
+      const ASAAS_API_KEY = (process.env.ASAAS_API_KEY || "").trim().replace(/^[`'"]+|[`'"]+$/g, "");
+      if (!ASAAS_API_KEY) {
+        console.error("ASAAS_API_KEY is not defined in environment variables.");
+        return res.status(500).json({ error: "Integração Asaas não configurada no servidor (ASAAS_API_KEY ausente)." });
+      }
+
+      // 1. Sanitize customer data
+      const cleanCpf = (customer.cpf || "").replace(/\D/g, "");
+      const cleanPhone = (customer.phone || "").replace(/\D/g, "");
+      const cleanEmail = (customer.email || "").trim() || `cliente_${cleanCpf}@animasystem.com.br`;
+      const customerName = customer.name.trim();
+
+      if (cleanCpf.length !== 11) {
+        return res.status(400).json({ error: "CPF inválido. Deve conter 11 dígitos numéricos." });
+      }
+
+      const asaasHeaders = {
+        "access_token": ASAAS_API_KEY,
+        "Content-Type": "application/json"
+      };
+
+      // 2. Identify or Create Customer in Asaas Sandbox
+      let asaasCustomerId: string | null = null;
+      try {
+        const searchCustomerUrl = getAsaasApiUrl("/customers", { cpfCnpj: cleanCpf });
+        console.log(`[Asaas Sandbox] Searching customer: ${searchCustomerUrl}`);
+
+        const searchCustomerRes = await fetch(searchCustomerUrl, {
+          method: "GET",
+          headers: asaasHeaders
+        });
+
+        if (searchCustomerRes.ok) {
+          const searchData: any = await searchCustomerRes.json();
+          if (searchData.data && searchData.data.length > 0) {
+            asaasCustomerId = searchData.data[0].id;
+            console.log(`[Asaas Sandbox] Existing customer found: ${asaasCustomerId}`);
+          }
+        }
+      } catch (err: any) {
+        console.error("Error checking customer in Asaas:", err.message);
+      }
+
+      if (!asaasCustomerId) {
+        const createCustomerUrl = getAsaasApiUrl("/customers");
+        console.log(`[Asaas Sandbox] Creating new customer: ${createCustomerUrl}`);
+
+        const createCustomerRes = await fetch(createCustomerUrl, {
+          method: "POST",
+          headers: asaasHeaders,
+          body: JSON.stringify({
+            name: customerName,
+            cpfCnpj: cleanCpf,
+            email: cleanEmail,
+            mobilePhone: cleanPhone || undefined,
+            phone: cleanPhone || undefined,
+            notificationDisabled: false
+          })
+        });
+
+        if (!createCustomerRes.ok) {
+          const errData: any = await createCustomerRes.json().catch(() => ({}));
+          console.error("Asaas create customer failed:", errData);
+          const errorMsg = errData.errors?.[0]?.description || "Não foi possível registrar o cliente no Asaas.";
+          return res.status(400).json({ error: errorMsg });
+        }
+
+        const newCustomerData: any = await createCustomerRes.json();
+        asaasCustomerId = newCustomerData.id;
+        console.log(`[Asaas Sandbox] Customer created successfully: ${asaasCustomerId}`);
+      }
+
+      // 3. Catalogue & Price determination (Server-side authoritative pricing)
+      const CATALOG: Record<string, { name: string; price: number; isSubscription: boolean }> = {
+        starter: { name: "Plano Starter", price: 60.00, isSubscription: true },
+        profissional: { name: "Plano Profissional", price: 149.00, isSubscription: true },
+        pro: { name: "Plano Profissional", price: 149.00, isSubscription: true },
+        enterprise: { name: "Plano Enterprise", price: 499.00, isSubscription: true },
+        "suporte-24h": { name: "Suporte Técnico 24 Horas VIP", price: 50.00, isSubscription: true },
+        "cloud-backup": { name: "Hospedagem Cloud Dedicada & Backup Diário", price: 39.90, isSubscription: true },
+        "seo-ads": { name: "Otimização SEO Avançada & Google Ads Setup", price: 89.00, isSubscription: true }
+      };
+
+      const requestedItems = Array.isArray(items) && items.length > 0 
+        ? items 
+        : [{ id: planId || "profissional", quantity: 1 }];
+
+      let subtotal = 0;
+      const resolvedItems: Array<{ id: string; name: string; price: number; quantity: number }> = [];
+
+      for (const item of requestedItems) {
+        const product = CATALOG[item.id] || CATALOG[planId] || CATALOG.profissional;
+        const qty = Math.max(1, Math.min(12, Number(item.quantity) || 1));
+        const itemTotal = product.price * qty;
+        subtotal += itemTotal;
+        resolvedItems.push({
+          id: item.id,
+          name: product.name,
+          price: product.price,
+          quantity: qty
+        });
+      }
+
+      // Coupon validation
+      let discountPercent = 0;
+      if (coupon) {
+        const c = String(coupon).trim().toUpperCase();
+        if (c === "ANIMA10" || c === "DESCONTO10") discountPercent = 10;
+        else if (c === "VIP") discountPercent = 15;
+      }
+
+      const discountVal = (subtotal * discountPercent) / 100;
+      const finalAmount = Math.max(5.00, subtotal - discountVal); // Asaas min value is 5.00 BRL
+
+      // 4. Generate unique external reference
+      const orderId = `order_${Math.random().toString(36).substring(2, 9)}_${Date.now().toString(36)}`;
+      const mainDescription = `Pedido ${orderId} - ${resolvedItems.map(i => i.name).join(" + ")}`;
+
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 3);
+      const dueDateStr = dueDate.toISOString().split("T")[0];
+
+      // 5. Create Asaas Checkout (Subscription or Payment with UNDEFINED billingType for PIX, Card & Boleto)
+      let checkoutUrl = "";
+      let asaasPaymentId: string | null = null;
+      let asaasSubscriptionId: string | null = null;
+
+      // Try creating recurring subscription first
+      try {
+        const createSubUrl = getAsaasApiUrl("/subscriptions");
+        console.log(`[Asaas Sandbox] Creating subscription: ${createSubUrl}`);
+
+        const subRes = await fetch(createSubUrl, {
+          method: "POST",
+          headers: asaasHeaders,
+          body: JSON.stringify({
+            customer: asaasCustomerId,
+            billingType: "UNDEFINED",
+            value: Number(finalAmount.toFixed(2)),
+            nextDueDate: dueDateStr,
+            cycle: "MONTHLY",
+            description: mainDescription,
+            externalReference: orderId
+          })
+        });
+
+        if (subRes.ok) {
+          const subData: any = await subRes.json();
+          asaasSubscriptionId = subData.id;
+
+          // Fetch the payment created for this subscription to get invoiceUrl
+          const paymentsUrl = getAsaasApiUrl(`/subscriptions/${subData.id}/payments`);
+          console.log(`[Asaas Sandbox] Fetching subscription payment: ${paymentsUrl}`);
+
+          const paymentsRes = await fetch(paymentsUrl, {
+            headers: asaasHeaders
+          });
+
+          if (paymentsRes.ok) {
+            const pData: any = await paymentsRes.json();
+            if (pData.data && pData.data.length > 0) {
+              asaasPaymentId = pData.data[0].id;
+              checkoutUrl = pData.data[0].invoiceUrl || pData.data[0].bankSlipUrl;
+            }
+          }
+        }
+      } catch (subErr: any) {
+        console.warn("Could not create subscription on Asaas, falling back to direct payment:", subErr.message);
+      }
+
+      // If subscription didn't return invoiceUrl, create direct Asaas payment
+      if (!checkoutUrl) {
+        const createPaymentUrl = getAsaasApiUrl("/payments");
+        console.log(`[Asaas Sandbox] Creating direct payment: ${createPaymentUrl}`);
+
+        const payRes = await fetch(createPaymentUrl, {
+          method: "POST",
+          headers: asaasHeaders,
+          body: JSON.stringify({
+            customer: asaasCustomerId,
+            billingType: "UNDEFINED",
+            value: Number(finalAmount.toFixed(2)),
+            dueDate: dueDateStr,
+            description: mainDescription,
+            externalReference: orderId,
+            postalService: false
+          })
+        });
+
+        if (!payRes.ok) {
+          const errData: any = await payRes.json().catch(() => ({}));
+          console.error("Asaas payment creation failed:", errData);
+          const errorMsg = errData.errors?.[0]?.description || "Não foi possível gerar a fatura de pagamento no Asaas.";
+          return res.status(400).json({ error: errorMsg });
+        }
+
+        const payData: any = await payRes.json();
+        asaasPaymentId = payData.id;
+        checkoutUrl = payData.invoiceUrl || payData.bankSlipUrl;
+      }
+
+      if (!checkoutUrl) {
+        return res.status(500).json({ error: "URL de checkout do Asaas não foi gerada." });
+      }
+
+      // Ensure HTTPS protocol for checkoutUrl
+      checkoutUrl = checkoutUrl.trim().replace(/^http:\/\//i, "https://");
+      console.log(`[Asaas Sandbox] Generated checkout URL: ${checkoutUrl}`);
+
+      // 6. Record Order in Firestore
+      const orderDoc = {
+        orderId,
+        userId: userId || null,
+        productId: planId || "profissional",
+        planId: planId || "profissional",
+        items: resolvedItems,
+        customerName,
+        customerEmail: cleanEmail,
+        customerPhone: cleanPhone,
+        customerCpf: cleanCpf,
+        asaasCustomerId,
+        asaasPaymentId,
+        asaasSubscriptionId,
+        amount: Number(finalAmount.toFixed(2)),
+        billingType: "UNDEFINED",
+        status: "pending",
+        externalReference: orderId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      try {
+        await addDoc(collection(db, "orders"), orderDoc);
+      } catch (firestoreErr) {
+        console.error("Error saving order to Firestore:", firestoreErr);
+      }
+
+      // 7. Also record Lead in Firestore for CRM dashboard
+      try {
+        const effectiveOwnerUid = ownerId || "6rbybX9mBAMp8B6gS3zQ8rT0hW32";
+        await addDoc(collection(db, "leads"), {
+          ownerId: effectiveOwnerUid,
+          name: customerName,
+          phone: customer.phone || cleanPhone,
+          cpf: cleanCpf,
+          email: cleanEmail,
+          company: resolvedItems.map(i => `${i.name} (x${i.quantity})`).join(" + "),
+          status: "new",
+          createdAt: new Date().toISOString(),
+          message: `Checkout Asaas iniciado. Pedido: ${orderId}. Valor: R$ ${finalAmount.toFixed(2)}. CPF: ${cleanCpf}`
+        });
+      } catch (leadErr) {
+        console.error("Error recording lead in Firestore:", leadErr);
+      }
+
+      // 8. Return secure safe response to frontend
+      return res.json({
+        success: true,
+        checkoutUrl,
+        orderId
+      });
+
+    } catch (error: any) {
+      console.error("Error in Asaas checkout endpoint:", error);
+      return res.status(500).json({ error: "Não foi possível iniciar o pagamento. Tente novamente." });
+    }
+  });
+
+  // Helper to recognize and process a confirmed Asaas payment in Dashboard, Clients, Leads, and Transactions
+  async function processConfirmedAsaasPayment(orderData: any, paymentDetails?: any) {
+    try {
+      const ownerId = orderData.ownerId || "6rbybX9mBAMp8B6gS3zQ8rT0hW32";
+      const amount = Number(orderData.amount || paymentDetails?.value || 0);
+      const clientName = orderData.customerName || "Cliente Asaas";
+      const planRaw = (orderData.planId || "profissional").toLowerCase();
+      const planName: "Starter" | "Profissional" | "Enterprise" = 
+        planRaw.includes("starter") ? "Starter" : planRaw.includes("enterprise") ? "Enterprise" : "Profissional";
+      const todayStr = new Date().toISOString().split("T")[0];
+      const paymentRefId = orderData.asaasPaymentId || paymentDetails?.id || orderData.orderId;
+
+      // 1. Register 'entrada' in Transactions collection so Dashboard & Finance reflect immediately
+      const transQ = query(
+        collection(db, "transactions"),
+        where("paymentId", "==", paymentRefId)
+      );
+      const transSnap = await getDocs(transQ);
+
+      if (transSnap.empty) {
+        await addDoc(collection(db, "transactions"), {
+          ownerId,
+          title: `Assinatura Plano ${planName} - Asaas`,
+          type: "entrada",
+          clientName,
+          amount,
+          date: todayStr,
+          status: "paid",
+          method: (paymentDetails?.billingType || orderData.billingType || "pix").toLowerCase(),
+          gateway: "asaas",
+          paymentId: paymentRefId,
+          orderId: orderData.orderId,
+          createdAt: serverTimestamp()
+        });
+        console.log(`[Asaas] Registered entrada in transactions: R$ ${amount} from ${clientName}`);
+      }
+
+      // 2. Create or Update Client in 'clients' collection
+      let existingClientId: string | null = null;
+      if (orderData.customerCpf) {
+        const clientQ = query(
+          collection(db, "clients"),
+          where("cpf", "==", orderData.customerCpf)
+        );
+        const clientSnap = await getDocs(clientQ);
+        if (!clientSnap.empty) {
+          existingClientId = clientSnap.docs[0].id;
+          await updateDoc(doc(db, "clients", existingClientId), {
+            status: "active",
+            plan: planName,
+            monthlyValue: amount,
+            updatedAt: new Date().toISOString()
+          });
+          console.log(`[Asaas] Updated existing client ${existingClientId} to active`);
+        }
+      }
+
+      if (!existingClientId) {
+        const cleanDomain = clientName.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const newClientRef = await addDoc(collection(db, "clients"), {
+          name: clientName,
+          responsible: clientName,
+          logoInitials: clientName.slice(0, 2).toUpperCase(),
+          plan: planName,
+          domain: `${cleanDomain || 'cliente'}.animasystem.com.br`,
+          firebaseProjectId: "animasystem-client",
+          monthlyValue: amount,
+          dueDate: 10,
+          status: "active",
+          cpf: orderData.customerCpf || "",
+          phone: orderData.customerPhone || "",
+          email: orderData.customerEmail || "",
+          ownerId,
+          hireDate: todayStr,
+          createdAt: new Date().toISOString()
+        });
+        existingClientId = newClientRef.id;
+        console.log(`[Asaas] Created new active client ${existingClientId}`);
+      }
+
+      // 3. Update Leads collection to converted
+      if (orderData.customerCpf) {
+        const leadQ = query(
+          collection(db, "leads"),
+          where("cpf", "==", orderData.customerCpf)
+        );
+        const leadSnap = await getDocs(leadQ);
+        for (const leadDoc of leadSnap.docs) {
+          await updateDoc(doc(db, "leads", leadDoc.id), {
+            status: "converted",
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      return existingClientId;
+    } catch (err: any) {
+      console.error("[Asaas] Error processing confirmed payment:", err);
+      return null;
+    }
+  }
+
+  // Check Order Status and Sync with Asaas Sandbox API
+  app.get("/api/asaas/check-order", async (req, res) => {
+    try {
+      const { orderId } = req.query;
+      if (!orderId || typeof orderId !== "string") {
+        return res.status(400).json({ error: "Parâmetro orderId obrigatório." });
+      }
+
+      const q = query(collection(db, "orders"), where("orderId", "==", orderId));
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        return res.status(404).json({ error: "Pedido não encontrado." });
+      }
+
+      const orderDocSnap = snap.docs[0];
+      const orderData = orderDocSnap.data();
+
+      // If already marked as paid in Firestore
+      if (orderData.status === "paid") {
+        return res.json({
+          status: "paid",
+          orderId,
+          customerName: orderData.customerName,
+          amount: orderData.amount,
+          planId: orderData.planId
+        });
+      }
+
+      // Check with Asaas API
+      const asaasApiKey = (process.env.ASAAS_API_KEY || "").trim().replace(/^[`'"]+|[`'"]+$/g, "");
+      if (asaasApiKey && (orderData.asaasPaymentId || orderData.asaasSubscriptionId)) {
+        const asaasHeaders = {
+          "Content-Type": "application/json",
+          "access_token": asaasApiKey
+        };
+
+        let paymentStatus: string | null = null;
+        let paymentData: any = null;
+
+        if (orderData.asaasPaymentId) {
+          const checkPayUrl = getAsaasApiUrl(`/payments/${orderData.asaasPaymentId}`);
+          const payRes = await fetch(checkPayUrl, { headers: asaasHeaders });
+          if (payRes.ok) {
+            paymentData = await payRes.json();
+            paymentStatus = paymentData.status;
+          }
+        }
+
+        if (!paymentStatus && orderData.asaasSubscriptionId) {
+          const checkSubUrl = getAsaasApiUrl(`/subscriptions/${orderData.asaasSubscriptionId}/payments`);
+          const subRes = await fetch(checkSubUrl, { headers: asaasHeaders });
+          if (subRes.ok) {
+            const subPayments = await subRes.json();
+            if (subPayments.data && subPayments.data.length > 0) {
+              paymentData = subPayments.data[0];
+              paymentStatus = paymentData.status;
+            }
+          }
+        }
+
+        console.log(`[Asaas Sandbox] Real-time status for order ${orderId}: ${paymentStatus}`);
+
+        // Statuses that represent confirmed payment in Asaas
+        const confirmedStatuses = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "DUNNING_RECEIVED"];
+        if (paymentStatus && confirmedStatuses.includes(paymentStatus)) {
+          // Update Order document to paid
+          await updateDoc(doc(db, "orders", orderDocSnap.id), {
+            status: "paid",
+            asaasPaymentStatus: paymentStatus,
+            billingType: paymentData.billingType || orderData.billingType,
+            paidAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+
+          // Process into Dashboard & Clients
+          const clientId = await processConfirmedAsaasPayment(orderData, paymentData);
+
+          return res.json({
+            status: "paid",
+            orderId,
+            clientId,
+            customerName: orderData.customerName,
+            amount: orderData.amount,
+            planId: orderData.planId
+          });
+        }
+      }
+
+      return res.json({
+        status: orderData.status || "pending",
+        orderId
+      });
+
+    } catch (err: any) {
+      console.error("Error checking order status:", err);
+      return res.status(500).json({ error: "Erro ao verificar status do pedido." });
+    }
+  });
+
+  // Asaas Webhook Endpoint
+  app.post("/api/webhook/asaas", async (req, res) => {
+    try {
+      const event = req.body;
+      console.log(`[Asaas Webhook] Event received: ${event.event}`, event.payment?.id || "");
+
+      const payment = event.payment;
+      if (payment) {
+        const confirmedEvents = ["PAYMENT_RECEIVED", "PAYMENT_CONFIRMED", "PAYMENT_RECEIVED_IN_CASH_UNDONE"];
+        
+        if (confirmedEvents.includes(event.event)) {
+          // Locate order by externalReference, asaasPaymentId, or asaasSubscriptionId
+          let orderDocSnap: any = null;
+
+          if (payment.externalReference) {
+            const q = query(collection(db, "orders"), where("orderId", "==", payment.externalReference));
+            const snap = await getDocs(q);
+            if (!snap.empty) orderDocSnap = snap.docs[0];
+          }
+
+          if (!orderDocSnap && payment.id) {
+            const q = query(collection(db, "orders"), where("asaasPaymentId", "==", payment.id));
+            const snap = await getDocs(q);
+            if (!snap.empty) orderDocSnap = snap.docs[0];
+          }
+
+          if (!orderDocSnap && payment.subscription) {
+            const q = query(collection(db, "orders"), where("asaasSubscriptionId", "==", payment.subscription));
+            const snap = await getDocs(q);
+            if (!snap.empty) orderDocSnap = snap.docs[0];
+          }
+
+          if (orderDocSnap) {
+            const orderData = orderDocSnap.data();
+            await updateDoc(doc(db, "orders", orderDocSnap.id), {
+              status: "paid",
+              asaasPaymentStatus: payment.status,
+              billingType: payment.billingType,
+              paidAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            });
+
+            await processConfirmedAsaasPayment(orderData, payment);
+            console.log(`[Asaas Webhook] Order ${orderData.orderId} processed successfully.`);
+          }
+        }
+      }
+
+      res.status(200).json({ received: true });
+    } catch (err: any) {
+      console.error("[Asaas Webhook] Error processing webhook:", err);
+      res.status(500).json({ error: "Erro interno no processamento do webhook." });
     }
   });
 
@@ -505,7 +1078,7 @@ async function startServer() {
         SELECT 
           project.id AS project_id, 
           project.name AS project_name,
-          SUM(cost) AS total_cost,
+          SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS total_cost,
           currency
         FROM 
           \`${bqTablePath}\`
@@ -521,7 +1094,8 @@ async function startServer() {
         projectId: credentials.project_id, // We run the job in our service account project
         requestBody: {
           query: sqlQuery,
-          useLegacySql: false
+          useLegacySql: false,
+          useQueryCache: false
         }
       });
 
@@ -541,7 +1115,7 @@ async function startServer() {
         const sqlDailyQuery = `
           SELECT 
             EXTRACT(DAY FROM TIMESTAMP(usage_start_time)) AS usage_day,
-            SUM(cost) AS total_cost,
+            SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS total_cost,
             currency
           FROM 
             \`${bqTablePath}\`
@@ -558,7 +1132,8 @@ async function startServer() {
           projectId: credentials.project_id,
           requestBody: {
             query: sqlDailyQuery,
-            useLegacySql: false
+            useLegacySql: false,
+          useQueryCache: false
           }
         });
         

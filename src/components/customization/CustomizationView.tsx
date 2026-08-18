@@ -83,19 +83,19 @@ export function CustomizationView() {
   const [plansDescription, setPlansDescription] = useState("Comece pequeno ou escale rapidamente. Escolha o plano que melhor se adapta às suas necessidades e ao seu momento no mercado.");
   
   const [plan1Name, setPlan1Name] = useState("Starter");
-  const [plan1Desc, setPlan1Desc] = useState("Para freelancers e microsaas lidarem com até 3 apps ativos.");
-  const [plan1Price, setPlan1Price] = useState("Grátis");
-  const [plan1Features, setPlan1Features] = useState("Até 3 Clientes\nMonito. Firebase (Limitado)\nIntegração Asaas Básica");
+  const [plan1Desc, setPlan1Desc] = useState("Para empresas que precisam de uma ferramenta pronta para organizar sua operação.");
+  const [plan1Price, setPlan1Price] = useState("R$ 60/mês");
+  const [plan1Features, setPlan1Features] = useState("Sistema pronto para uso\nCadastro e gerenciamento de clientes\nClientes ilimitados\nSistema de vendas\nCadastro de produtos e/ou serviços\nControle de operações\nPainel administrativo\nAcesso pelo celular e computador\nAtualizações do sistema\nHospedagem inclusa\nBanco de dados incluso\nSuporte ao cliente");
 
-  const [plan2Name, setPlan2Name] = useState("Professional");
-  const [plan2Desc, setPlan2Desc] = useState("A ferramenta completa para agências lidarem com escala.");
-  const [plan2Price, setPlan2Price] = useState("R$ 149");
-  const [plan2Features, setPlan2Features] = useState("Clientes Ilimitados\nNOC Firestore Em Tempo Real\nSistema de Tickets L1/L2\nFaturamento Automático PIX\nMúltiplas Contas Admin");
+  const [plan2Name, setPlan2Name] = useState("Profissional");
+  const [plan2Desc, setPlan2Desc] = useState("Para empresas que precisam de um site profissional, landing page ou uma solução digital enxuta e bem estruturada.");
+  const [plan2Price, setPlan2Price] = useState("R$ 149/mês");
+  const [plan2Features, setPlan2Features] = useState("Site desenvolvido sob medida\nProjeto personalizado\nEstrutura profissional de páginas\nLanding pages\nDesign responsivo\nFormulário de contato\nIntegração com WhatsApp\nIntegração com redes sociais\nOtimização para Google (SEO)\nHospedagem inclusa\nDomínio personalizado\nCertificado SSL\nPainel administrativo, quando aplicável\nAtualizações e manutenção\nSuporte por 1 ano\nClientes ilimitados");
 
   const [plan3Name, setPlan3Name] = useState("Enterprise");
-  const [plan3Desc, setPlan3Desc] = useState("Monitoramento on-premises em instâncias separadas.");
-  const [plan3Price, setPlan3Price] = useState("Custom");
-  const [plan3Features, setPlan3Features] = useState("Implantação Self-hosted\nExportação BigQuery Dedicada\nSLA & Suporte 24/7");
+  const [plan3Desc, setPlan3Desc] = useState("Para empresas que precisam de sistemas complexos, aplicativos, plataformas e soluções desenvolvidas especificamente para sua operação.");
+  const [plan3Price, setPlan3Price] = useState("Sob consulta");
+  const [plan3Features, setPlan3Features] = useState("Sistemas personalizados\nAplicativos Android e iOS\nPlataformas web\nPainéis administrativos avançados\nGestão de usuários e permissões\nSistemas de vendas\nIntegração com APIs\nIntegração com sistemas externos\nGPS e geolocalização (Beta)\nAutomação de processos\nMonitoramento em tempo real\nBanco de dados escalável\nInfraestrutura personalizada\nSegurança avançada\nBackup e recuperação\nAnalytics e indicadores\nIntegrações com pagamentos\nArquitetura preparada para escala\nSuporte e manutenção personalizados");
 
   // 5. Perguntas Frequentes (FAQ)
   const [faqTitle, setFaqTitle] = useState("Perguntas Frequentes");
@@ -205,18 +205,21 @@ export function CustomizationView() {
           if (data.plansTag) setPlansTag(data.plansTag);
           if (data.plansTitle) setPlansTitle(data.plansTitle);
           if (data.plansDescription) setPlansDescription(data.plansDescription);
-          if (data.plan1Name) setPlan1Name(data.plan1Name);
-          if (data.plan1Desc) setPlan1Desc(data.plan1Desc);
-          if (data.plan1Price) setPlan1Price(data.plan1Price);
-          if (data.plan1Features) setPlan1Features(data.plan1Features);
-          if (data.plan2Name) setPlan2Name(data.plan2Name);
-          if (data.plan2Desc) setPlan2Desc(data.plan2Desc);
-          if (data.plan2Price) setPlan2Price(data.plan2Price);
-          if (data.plan2Features) setPlan2Features(data.plan2Features);
-          if (data.plan3Name) setPlan3Name(data.plan3Name);
-          if (data.plan3Desc) setPlan3Desc(data.plan3Desc);
-          if (data.plan3Price) setPlan3Price(data.plan3Price);
-          if (data.plan3Features) setPlan3Features(data.plan3Features);
+          
+          if (data.plan1Name && data.plan1Name !== "Starter") setPlan1Name(data.plan1Name);
+          if (data.plan1Desc && data.plan1Desc !== "Para freelancers e microsaas lidarem com até 3 apps ativos.") setPlan1Desc(data.plan1Desc);
+          if (data.plan1Price && data.plan1Price !== "Grátis") setPlan1Price(data.plan1Price);
+          if (data.plan1Features && data.plan1Features !== "Até 3 Clientes\nMonito. Firebase (Limitado)\nIntegração Asaas Básica") setPlan1Features(data.plan1Features);
+          
+          if (data.plan2Name && data.plan2Name !== "Profissional") setPlan2Name(data.plan2Name);
+          if (data.plan2Desc && data.plan2Desc !== "A ferramenta completa para agências lidarem com escala.") setPlan2Desc(data.plan2Desc);
+          if (data.plan2Price && data.plan2Price !== "R$ 149") setPlan2Price(data.plan2Price);
+          if (data.plan2Features && data.plan2Features !== "Clientes Ilimitados\nNOC Firestore Em Tempo Real\nSistema de Tickets L1/L2\nFaturamento Automático PIX\nMúltiplas Contas Admin") setPlan2Features(data.plan2Features);
+          
+          if (data.plan3Name && data.plan3Name !== "Enterprise") setPlan3Name(data.plan3Name);
+          if (data.plan3Desc && data.plan3Desc !== "Monitoramento on-premises em instâncias separadas.") setPlan3Desc(data.plan3Desc);
+          if (data.plan3Price && data.plan3Price !== "Custom") setPlan3Price(data.plan3Price);
+          if (data.plan3Features && data.plan3Features !== "Implantação Self-hosted\nExportação BigQuery Dedicada\nSLA & Suporte 24/7") setPlan3Features(data.plan3Features);
 
           // 5. FAQ
           if (data.faqTitle) setFaqTitle(data.faqTitle);
@@ -802,7 +805,7 @@ export function CustomizationView() {
                 <div className="p-2 bg-white border border-[#D7FE03]/40 rounded-xl flex flex-col justify-between relative shadow-md">
                   <span className="absolute top-1 right-2 bg-[#D7FE03] text-black text-[5px] font-extrabold uppercase px-1 rounded">DESTAQUE</span>
                   <div>
-                    <span className="text-[7.5px] font-extrabold text-black block">{plan2Name || 'Professional'}</span>
+                    <span className="text-[7.5px] font-extrabold text-black block">{plan2Name || 'Profissional'}</span>
                     <p className="text-[6.5px] text-zinc-500 line-clamp-1">{plan2Desc || 'Para agências em expansão.'}</p>
                     <span className="text-[10px] font-black text-[#D7FE03] mt-1 block">{plan2Price || 'R$ 149'}</span>
                   </div>

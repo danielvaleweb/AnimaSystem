@@ -51,6 +51,30 @@
         "dismissedAt": { "type": "string" }
       },
       "required": ["ownerId", "clientId", "clientName", "date", "amount"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Represents a customer checkout order for plans/services linked to Asaas.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "userId": { "type": "string" },
+        "productId": { "type": "string" },
+        "planId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "customerCpf": { "type": "string" },
+        "asaasCustomerId": { "type": "string" },
+        "asaasCheckoutId": { "type": "string" },
+        "amount": { "type": "number" },
+        "billingType": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "paid", "failed"] },
+        "externalReference": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["orderId", "planId", "customerName", "customerCpf", "amount", "status"]
     }
   },
   "firestore": {
@@ -65,6 +89,10 @@
     "/dismissed_transactions/{dismissedId}": {
       "schema": { "$ref": "#/entities/DismissedTransaction" },
       "description": "Stores manually ignored/deleted virtual transactions."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Stores checkout orders linked to Asaas."
     }
   }
 }
