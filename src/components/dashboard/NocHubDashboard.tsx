@@ -144,11 +144,46 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
     }, 1500);
   };
 
-  // Financial summary calculations
-  const totalRevenue = clients
-    .filter(c => c.status === 'active' || c.status === 'trial')
-    .reduce((sum, c) => sum + (c.monthlyValue || 0), 0);
-  
+  // Financial summary calculations: Only revenue that has already entered (paid) in the current year
+  const activeClients = clients.filter(c => c.status === 'active' || c.status === 'trial');
+  const currentMRR = activeClients.reduce((sum, c) => sum + (Number(c.monthlyValue) || 0), 0);
+
+  const currentYear = new Date().getFullYear();
+  const paidRevenuesThisYear = transactions.filter(t => {
+    if (t.status !== 'paid') return false;
+    if (t.type === 'saida') return false;
+    if (t.date) {
+      const tYear = new Date(t.date).getFullYear();
+      if (!isNaN(tYear) && tYear !== currentYear) return false;
+    }
+    return true;
+  });
+
+  // Only sum what has already actually entered (paid transactions)
+  const currentARR = paidRevenuesThisYear.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+  const totalRevenue = currentARR;
+
+  const infraGroups = React.useMemo(() => {
+    const groups: Record<string, ClientData[]> = {};
+    const activeClients = clients.filter(c => c.status === 'active');
+    activeClients.forEach(c => {
+      const periodRaw = c.gcpBillingPeriod || 'Uso Estimado Recente';
+      const period = periodRaw.replace(' (Automático via BigQuery)', '');
+      if (!groups[period]) groups[period] = [];
+      groups[period].push(c);
+    });
+    // Sort each group by cost descending
+    Object.keys(groups).forEach(key => {
+      groups[key].sort((a, b) => {
+        const costA = a.gcpBillingCost ?? a.lastRealMetrics?.cost ?? 0;
+        const costB = b.gcpBillingCost ?? b.lastRealMetrics?.cost ?? 0;
+        return costB - costA;
+      });
+    });
+    return groups;
+  }, [clients]);
+
   // Calculate total collected based on period
   const calculateTotalBalance = () => {
     const now = new Date();
@@ -284,14 +319,15 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
         {/* ================= MAIN THREE-COLUMN GRID ================= */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           
-          {/* ----------------- COLUMN 1: TOTAL BALANCE (3/12 width) ----------------- */}
+          {/* ----------------- COLUMN 1: ARR - RECEITA ANUAL RECORRENTE (3/12 width) ----------------- */}
           <div className="lg:col-span-3 bg-black text-white rounded-3xl p-6 flex flex-col justify-start border border-zinc-900 relative overflow-hidden text-left">
             <div className="space-y-6">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-light uppercase tracking-wider text-zinc-400">Total balance</span>
+                <span className="text-xs font-light uppercase tracking-wider text-zinc-400">ARR - Receita Anual Recorrente</span>
                 <button 
                   onClick={() => onNavigate('finance')}
                   className="w-8 h-8 rounded-full bg-zinc-900 hover:bg-zinc-800 text-white transition-all flex items-center justify-center cursor-pointer"
+                  title="Ver Financeiro"
                 >
                   <ArrowUpRight className="w-4 h-4" />
                 </button>
@@ -299,7 +335,7 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
 
               <div>
                 <h3 className="text-3xl font-light font-sans tracking-tight">
-                  R$ {currentTotalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R$ {currentARR.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </h3>
               </div>
 
@@ -319,14 +355,20 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
                 </button>
               </div>
 
-              {/* Progress: Spending in June */}
+              {/* Progress: Base Mensal & Clientes */}
               <div className="space-y-2 pt-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-light text-zinc-400">Spending in June</span>
+                  <span className="text-xs font-light text-zinc-400">Base Mensal (MRR)</span>
+                  <span className="text-xs font-mono font-medium text-[#D7FE03]">
+                    R$ {currentMRR.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês
+                  </span>
                 </div>
-                {/* Visual horizontal slider progress bar: toxic green pill on left, diagonal hatched track on right */}
+                {/* Visual horizontal slider progress bar */}
                 <div className="w-full h-8 bg-zinc-900 rounded-full p-1.5 flex items-center overflow-hidden">
-                  <div className="bg-[#D7FE03] h-full rounded-full flex items-center justify-end px-3" style={{ width: '45%' }}>
+                  <div 
+                    className="bg-[#D7FE03] h-full rounded-full flex items-center justify-end px-3 transition-all duration-500" 
+                    style={{ width: `${Math.min(100, Math.max(20, (activeClients.length / 10) * 100))}%` }}
+                  >
                     <div className="w-1.5 h-1.5 rounded-full bg-black" />
                   </div>
                   {/* Hatched lines in remaining track */}
@@ -334,7 +376,7 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
                 </div>
                 
                 <p className="text-[11px] text-zinc-400 leading-normal font-light">
-                  <span className="font-semibold text-white">R$ 460,00</span> This is R$ 150,00 less than last month.
+                  <span className="font-semibold text-white">R$ {currentARR.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span> efetivamente recebido de clientes no ano.
                 </p>
               </div>
             </div>
@@ -507,9 +549,13 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
                           }`}
                         >
                           <div className="flex items-center gap-4 mb-4">
-                            <div className="w-12 h-12 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-sm font-bold text-zinc-600 shadow-sm shrink-0">
-                              {client.logoInitials}
-                            </div>
+                            {client.logoUrl ? (
+                              <img src={client.logoUrl} alt={client.name} className="w-12 h-12 rounded-full object-cover border border-zinc-200 shadow-sm shrink-0" />
+                            ) : (
+                              <div className="w-12 h-12 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-sm font-bold text-zinc-600 shadow-sm shrink-0 uppercase">
+                                {client.logoInitials}
+                              </div>
+                            )}
                             <div className="flex flex-col">
                               <span className="text-sm font-bold text-zinc-800 line-clamp-1">{client.name}</span>
                               <span className="text-xs text-zinc-500 mt-0.5">Mensalidade</span>
@@ -741,7 +787,7 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
             {/* Bottom part of Column 3: History */}
             <div className="bg-white border border-zinc-200/75 rounded-3xl p-6 flex flex-col justify-start flex-1">
               <div className="flex justify-between items-center pb-4 border-b border-zinc-100">
-                <span className="font-light text-black text-base tracking-wide">History</span>
+                <span className="font-light text-black text-base tracking-wide">Histórico de Custo da Infra</span>
                 <button 
                   onClick={() => onNavigate('finance')}
                   className="w-8 h-8 rounded-full bg-zinc-50 border border-zinc-200 flex items-center justify-center"
@@ -752,94 +798,58 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
 
               {/* History list groups */}
               <div className="space-y-5 mt-4 flex-1 overflow-y-auto max-h-[360px] pr-1">
-                
-                {/* Group 1: Today */}
-                <div className="space-y-3.5">
-                  <span className="text-[9px] text-zinc-400 font-light uppercase tracking-widest block">Today, 20 March</span>
-                  
-                  {/* Item 1 */}
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center text-white shrink-0 font-light text-xs">N</div>
-                      <div className="text-left">
-                        <p className="text-xs font-normal text-zinc-900 leading-snug">Nike Store</p>
-                        <p className="text-[9px] text-zinc-400 font-light">Purchase</p>
-                      </div>
+                {Object.keys(infraGroups).length > 0 ? (
+                  Object.entries(infraGroups).map(([period, groupClients]) => (
+                    <div key={period} className="space-y-4">
+                      <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-widest block mb-1">{period}</span>
+                      {groupClients.map(client => {
+                        const cost = client.gcpBillingCost ?? client.lastRealMetrics?.cost ?? 0;
+                        const prevCost = client.gcpBillingCostPrevMonth ?? 0;
+                        const diff = cost - prevCost;
+                        const isIncrease = diff > 0;
+                        const isDecrease = diff < 0;
+                        
+                        const isReal = client.gcpBillingCost !== undefined;
+                        // Use string conversion to ensure replace works
+                        const costFormatted = Number(cost).toFixed(2).replace('.', ',');
+                        const diffFormatted = Math.abs(diff).toFixed(2).replace('.', ',');
+                        
+                        return (
+                          <div key={client.id} className="flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                              {client.logoUrl ? (
+                                <img src={client.logoUrl} alt={client.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-800 shrink-0 font-normal text-sm uppercase">
+                                  {client.logoInitials}
+                                </div>
+                              )}
+                              <div className="text-left">
+                                <p className="text-sm font-medium text-zinc-900 leading-snug">{client.name}</p>
+                                <p className="text-xs text-zinc-500 font-light mt-0.5">Custo Cloud</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {isIncrease ? (
+                                  <ArrowUpRight className="w-4 h-4 text-red-500" />
+                                ) : isDecrease ? (
+                                  <ArrowDownRight className="w-4 h-4 text-emerald-500" />
+                                ) : null}
+                                <p className="text-sm font-semibold font-mono text-emerald-600">R$ {costFormatted}</p>
+                              </div>
+                              <p className="text-[10px] text-zinc-500 font-mono mt-1">{isIncrease ? `+ R$ ${diffFormatted}` : isDecrease ? `- R$ ${diffFormatted}` : 'Sem alteração'}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-light font-mono text-zinc-900">-$45.90</p>
-                      <p className="text-[8px] text-zinc-400 font-mono">11:30 AM</p>
-                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-xs text-zinc-400 font-light">Nenhum custo de infraestrutura recente.</p>
                   </div>
-
-                  {/* Item 2 */}
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-black shrink-0 font-light text-xs">A</div>
-                      <div className="text-left">
-                        <p className="text-xs font-normal text-zinc-900 leading-snug">Apple Store</p>
-                        <p className="text-[9px] text-zinc-400 font-light">Purchase</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-light font-mono text-zinc-900">-$112.00</p>
-                      <p className="text-[8px] text-zinc-400 font-mono">10:12 AM</p>
-                    </div>
-                  </div>
-
-                  {/* Item 3 */}
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-zinc-900 flex items-center justify-center text-white shrink-0 font-light text-[10px]">PS</div>
-                      <div className="text-left">
-                        <p className="text-xs font-normal text-zinc-900 leading-snug">PlayStation Network</p>
-                        <p className="text-[9px] text-zinc-400 font-light">Purchase</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-light font-mono text-zinc-900">-$28.60</p>
-                      <p className="text-[8px] text-zinc-400 font-mono">6:34 PM</p>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Group 2: Yesterday */}
-                <div className="space-y-3.5 pt-2">
-                  <span className="text-[9px] text-zinc-400 font-light uppercase tracking-widest block">Yesterday, 19 March</span>
-
-                  {/* Item 4 */}
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-700 shrink-0 font-light text-xs">RF</div>
-                      <div className="text-left">
-                        <p className="text-xs font-normal text-zinc-900 leading-snug">Robert Fox</p>
-                        <p className="text-[9px] text-zinc-400 font-light">Replenishment</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-light font-mono text-emerald-500">+$280.00</p>
-                      <p className="text-[8px] text-zinc-400 font-mono">8:10 PM</p>
-                    </div>
-                  </div>
-
-                  {/* Item 5 */}
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-700 shrink-0 font-light text-xs">KM</div>
-                      <div className="text-left">
-                        <p className="text-xs font-normal text-zinc-900 leading-snug">Kathryn Murphy</p>
-                        <p className="text-[9px] text-zinc-400 font-light">Replenishment</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-light font-mono text-emerald-500">+$400.00</p>
-                      <p className="text-[8px] text-zinc-400 font-mono">4:45 PM</p>
-                    </div>
-                  </div>
-
-                </div>
-
+                )}
               </div>
             </div>
 

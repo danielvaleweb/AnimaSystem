@@ -4,8 +4,7 @@ import {
   DollarSign, ArrowUpRight, ArrowDownRight, CreditCard, 
   QrCode, AlertCircle, FileText, Download, Filter, Search,
   CheckCircle2, Clock, Plus, X, ArrowUpCircle, ArrowDownCircle,
-  Edit2, Trash2, ChevronDown
-, RefreshCw } from 'lucide-react';
+  Edit2, Trash2, ChevronDown, RefreshCw, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNotification } from '../NotificationContext';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, deleteDoc, updateDoc } from 'firebase/firestore';
@@ -385,6 +384,13 @@ export function FinanceView({ onNavigate }: { onNavigate?: (view: any, id?: stri
         </div>
 
       <div className="flex flex-col sm:flex-row justify-end gap-3 w-full sm:w-auto">
+        <button 
+          onClick={() => onNavigate?.('investments')}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-black hover:bg-zinc-800 text-white font-semibold rounded-xl transition-all w-full sm:w-auto text-sm cursor-pointer shadow-sm"
+        >
+          <TrendingUp className="w-4 h-4 text-[#d4ff00]" />
+          Meus Investimentos
+        </button>
         <button 
           onClick={handleSync}
           disabled={isSyncing}

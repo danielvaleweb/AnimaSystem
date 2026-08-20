@@ -213,7 +213,20 @@ async function startServer() {
           const searchData: any = await searchCustomerRes.json();
           if (searchData.data && searchData.data.length > 0) {
             asaasCustomerId = searchData.data[0].id;
-            console.log(`[Asaas Sandbox] Existing customer found: ${asaasCustomerId}`);
+            console.log(`[Asaas Sandbox] Existing customer found: ${asaasCustomerId}, syncing updated name: ${customerName}`);
+            
+            // Update customer on Asaas with current checkout details
+            const updateCustomerUrl = getAsaasApiUrl(`/customers/${asaasCustomerId}`);
+            await fetch(updateCustomerUrl, {
+              method: "POST",
+              headers: asaasHeaders,
+              body: JSON.stringify({
+                name: customerName,
+                email: cleanEmail,
+                mobilePhone: cleanPhone || undefined,
+                phone: cleanPhone || undefined
+              })
+            }).catch(err => console.warn("Could not update Asaas customer details:", err));
           }
         }
       } catch (err: any) {
@@ -613,17 +626,22 @@ async function startServer() {
         // Statuses that represent confirmed payment in Asaas
         const confirmedStatuses = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "DUNNING_RECEIVED"];
         if (paymentStatus && confirmedStatuses.includes(paymentStatus)) {
-          // Update Order document to paid
-          await updateDoc(doc(db, "orders", orderDocSnap.id), {
-            status: "paid",
-            asaasPaymentStatus: paymentStatus,
-            billingType: paymentData.billingType || orderData.billingType,
-            paidAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          });
+          let clientId = null;
+          try {
+            // Update Order document to paid
+            await updateDoc(doc(db, "orders", orderDocSnap.id), {
+              status: "paid",
+              asaasPaymentStatus: paymentStatus,
+              billingType: paymentData?.billingType || orderData.billingType,
+              paidAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            });
 
-          // Process into Dashboard & Clients
-          const clientId = await processConfirmedAsaasPayment(orderData, paymentData);
+            // Process into Dashboard & Clients
+            clientId = await processConfirmedAsaasPayment(orderData, paymentData);
+          } catch (syncErr) {
+            console.error("Error updating Firestore on confirmed payment:", syncErr);
+          }
 
           return res.json({
             status: "paid",
@@ -642,8 +660,8 @@ async function startServer() {
       });
 
     } catch (err: any) {
-      console.error("Error checking order status:", err);
-      return res.status(500).json({ error: "Erro ao verificar status do pedido." });
+      console.warn("Transient error checking order status:", err.message);
+      return res.json({ status: "pending", orderId: req.query.orderId });
     }
   });
 
@@ -1071,6 +1089,9 @@ async function startServer() {
       const today = new Date();
       const currentInvoiceMonth = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}`; // YYYYMM format
       
+      const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const previousInvoiceMonth = `${prevMonthDate.getFullYear()}${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
       const bqTablePath = `${bqProjectId}.${bqDatasetId}.${bqTableId}`;
       
       // Standard GCP BigQuery billing query
@@ -1088,16 +1109,41 @@ async function startServer() {
           project_id, project_name, currency
       `;
 
+      // Previous month GCP BigQuery billing query
+      const sqlPrevQuery = `
+        SELECT 
+          project.id AS project_id, 
+          project.name AS project_name,
+          SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS total_cost,
+          currency
+        FROM 
+          \`${bqTablePath}\`
+        WHERE 
+          invoice.month = '${previousInvoiceMonth}'
+        GROUP BY 
+          project_id, project_name, currency
+      `;
+
       console.log("Running BigQuery Billing Query:\n", sqlQuery);
 
-      const queryRes = await bigquery.jobs.query({
-        projectId: credentials.project_id, // We run the job in our service account project
-        requestBody: {
-          query: sqlQuery,
-          useLegacySql: false,
-          useQueryCache: false
-        }
-      });
+      const [queryRes, queryPrevRes] = await Promise.all([
+        bigquery.jobs.query({
+          projectId: credentials.project_id, // We run the job in our service account project
+          requestBody: {
+            query: sqlQuery,
+            useLegacySql: false,
+            useQueryCache: false
+          }
+        }),
+        bigquery.jobs.query({
+          projectId: credentials.project_id,
+          requestBody: {
+            query: sqlPrevQuery,
+            useLegacySql: false,
+            useQueryCache: false
+          }
+        })
+      ]);
 
       const rows = queryRes.data.rows || [];
       const records = rows.map((row: any) => {
@@ -1105,7 +1151,16 @@ async function startServer() {
         const projectId = row.f?.[0]?.v || '';
         const projectName = row.f?.[1]?.v || '';
         const totalCost = parseFloat(row.f?.[2]?.v || '0');
-        const currency = row.f?.[3]?.v || 'USD';
+        const currency = String(row.f?.[3]?.v || 'USD').trim().toUpperCase();
+        return { projectId, projectName, totalCost, currency };
+      });
+
+      const prevRows = queryPrevRes.data.rows || [];
+      const prevRecords = prevRows.map((row: any) => {
+        const projectId = row.f?.[0]?.v || '';
+        const projectName = row.f?.[1]?.v || '';
+        const totalCost = parseFloat(row.f?.[2]?.v || '0');
+        const currency = String(row.f?.[3]?.v || 'USD').trim().toUpperCase();
         return { projectId, projectName, totalCost, currency };
       });
 
@@ -1141,11 +1196,11 @@ async function startServer() {
         dailyRecords = dailyRows.map((row: any) => {
           const day = Number(row.f?.[0]?.v || '0');
           const cost = parseFloat(row.f?.[1]?.v || '0');
-          const currency = row.f?.[2]?.v || 'USD';
+          const currency = String(row.f?.[2]?.v || 'USD').trim().toUpperCase();
           
           let costBRL = cost;
           if (currency === 'USD') {
-            costBRL = cost * 5.20;
+            costBRL = cost * 5.45;
           }
           return { day, costBRL };
         });
@@ -1169,21 +1224,31 @@ async function startServer() {
 
         // Find matching record from BigQuery
         const matched = records.find(r => r.projectId.trim().toLowerCase() === firebaseProjectId);
+        const prevMatched = prevRecords.find(r => r.projectId.trim().toLowerCase() === firebaseProjectId);
+        
         if (matched) {
           // Update client in Firestore with bq fetched cost
           const docRef = doc(db, "clients", clientDoc.id);
           
           let costInBRL = matched.totalCost;
-          // If currency is USD, we can multiply by current approximate exchange rate or use a standard rate
           if (matched.currency === 'USD') {
-            costInBRL = matched.totalCost * 5.20;
+            costInBRL = matched.totalCost * 5.45;
+          }
+
+          let prevCostInBRL = 0;
+          if (prevMatched) {
+            prevCostInBRL = prevMatched.totalCost;
+            if (prevMatched.currency === 'USD') {
+              prevCostInBRL = prevMatched.totalCost * 5.45;
+            }
           }
 
           const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-          const periodString = `${monthNames[today.getMonth()]} de ${today.getFullYear()} (Automático via BigQuery)`;
+          const periodString = `${monthNames[today.getMonth()]} de ${today.getFullYear()}`;
 
           await updateDoc(docRef, {
             gcpBillingCost: costInBRL,
+            gcpBillingCostPrevMonth: prevCostInBRL,
             gcpBillingPeriod: periodString,
             gcpBillingLastSync: new Date().toISOString()
           });
@@ -1233,6 +1298,56 @@ async function startServer() {
     }
   });
 
+  // --- INVESTMENTS API ---
+  
+  // Proxy for brapi.dev quote
+  app.get("/api/investments/quote", async (req, res) => {
+    try {
+      const { tickers } = req.query;
+      if (!tickers) return res.status(400).json({ error: "Tickers parameter is required" });
+      
+      const apiKey = process.env.BRAPI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "BRAPI_API_KEY is not configured" });
+
+      const response = await fetch(`https://brapi.dev/api/quote/${tickers}?token=${apiKey}`);
+      if (!response.ok) {
+        throw new Error(`Brapi API error: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("Error fetching quotes:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Proxy for brapi.dev search
+  app.get("/api/investments/search", async (req, res) => {
+    try {
+      const { search } = req.query;
+      if (!search) return res.status(400).json({ error: "Search parameter is required" });
+      
+      const apiKey = process.env.BRAPI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "BRAPI_API_KEY is not configured" });
+
+      const response = await fetch(`https://brapi.dev/api/quote/list?search=${search}&token=${apiKey}`);
+      if (!response.ok) {
+        throw new Error(`Brapi API error: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("Error searching assets:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1242,7 +1357,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*all", (req, res) => {
+    app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

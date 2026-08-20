@@ -249,8 +249,8 @@ export default function CheckoutView() {
             }, 1800);
           }
         }
-      } catch (err) {
-        console.error('Error checking Asaas order status:', err);
+      } catch {
+        // Transient network polling attempt - will retry on next tick
       }
     }, 2500);
 

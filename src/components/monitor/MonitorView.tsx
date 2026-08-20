@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Database, HardDrive, Users, Zap, Globe, 
   CheckCircle2, AlertTriangle, XOctagon, Activity, Server, Clock, RefreshCw, Rocket, Hand, Power, Code, ChevronDown,
-  Upload, FileText
+  Upload, FileText, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../utils';
@@ -423,24 +423,25 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
   const calculateTotalCost = () => {
     if (!gcpMetrics) return { currentBRL: 0, projectedBRL: 0 };
     
-    const USD_TO_BRL = 5.20;
+    const USD_TO_BRL = 5.45;
+    const currentDay = Math.max(1, new Date().getDate());
     
-    // Reads
+    // Reads (Free tier: 50K per day = 50K * currentDay)
     const readsVal = gcpMetrics.reads_billable?.value || gcpMetrics.reads_ops?.value || 0;
-    const readsAfterFree = Math.max(0, readsVal - 50000);
+    const readsAfterFree = Math.max(0, readsVal - (50000 * currentDay));
     const readsCostUSD = (readsAfterFree / 100000) * 0.036;
     
-    // Writes
+    // Writes (Free tier: 20K per day = 20K * currentDay)
     const writesVal = gcpMetrics.writes_billable?.value || gcpMetrics.writes_ops?.value || 0;
-    const writesAfterFree = Math.max(0, writesVal - 20000);
+    const writesAfterFree = Math.max(0, writesVal - (20000 * currentDay));
     const writesCostUSD = (writesAfterFree / 100000) * 0.108;
     
-    // Firestore Storage
+    // Firestore Storage (Free tier: 1 GB per month)
     const fsStorageGB = (gcpMetrics.storageBytes?.value || 0) / 1024 / 1024 / 1024;
     const fsStorageAfterFree = Math.max(0, fsStorageGB - 1);
     const fsStorageCostUSD = fsStorageAfterFree * 0.108;
     
-    // Cloud Storage
+    // Cloud Storage (Free tier: 5 GB per month)
     const csVal1 = gcpMetrics.cloudStorageBytes?.value || 0;
     const csVal2 = gcpMetrics.cloudStorageBytesV2?.value || 0;
     const csFinalVal = Math.max(csVal1, csVal2);
@@ -767,52 +768,38 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
         {/* Card 1: Custo Google Cloud */}
         <div className="bg-white border border-zinc-200/80 rounded-2xl p-5 flex flex-col justify-center min-h-[110px] relative overflow-hidden group select-none">
           <span className="text-zinc-500 text-xs font-medium mb-1.5 block flex items-center justify-between">
-            <span>Custo da Infra (GCP)</span>
-            {selectedClient?.firebaseProjectId && (
-              <span className="text-[10px] text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">Faturamento</span>
-            )}
+            <span>Custo na Infra</span>
           </span>
           {(() => {
             const costs = calculateTotalCost();
             const realBillingCost = selectedClient?.gcpBillingCost;
+            const prevMonthCost = selectedClient?.gcpBillingCostPrevMonth ?? 0;
+            const currentCost = realBillingCost !== undefined ? realBillingCost : costs.currentBRL;
+            const diff = currentCost - prevMonthCost;
+            const isIncrease = diff > 0;
+            const isDecrease = diff < 0;
+
+            const diffFormatted = Math.abs(diff).toFixed(4).replace('.', ',');
+            const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+            const prevMonthName = monthNames[(new Date().getMonth() + 11) % 12];
+
             return (
               <div className="space-y-1.5">
-                {realBillingCost !== undefined ? (
-                  <div>
-                    <div className="text-emerald-600 font-extrabold text-xl font-mono leading-none flex items-baseline gap-1.5">
-                      <span>R$ {realBillingCost.toFixed(2)}</span>
-                      <span className="text-[10px] text-emerald-500 font-medium bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded font-sans uppercase">Fatura Real</span>
-                    </div>
-                    <div className="text-[10px] text-zinc-500 mt-1 flex flex-col gap-0.5">
-                      <div>
-                        <span className="text-zinc-500">Período:</span> {selectedClient?.gcpBillingPeriod || 'Mês atual'}
-                      </div>
-                      <div>
-                        <span className="text-zinc-500">Estimado real-time:</span> <span className="text-zinc-700 font-mono">R$ {costs.currentBRL.toFixed(4)}</span>
-                      </div>
-                    </div>
+                <div>
+                  <div className="text-emerald-600 font-extrabold text-2xl font-mono leading-none flex items-baseline gap-1.5">
+                    <span>R$ {currentCost.toFixed(2).replace('.', ',')}</span>
                   </div>
-                ) : (
-                  <div>
-                    <div className="text-emerald-600 font-extrabold text-lg sm:text-xl font-mono">
-                      R$ {costs.currentBRL.toFixed(4)}
-                    </div>
-                    {costs.projectedBRL > costs.currentBRL && (
-                      <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1">
-                        <span className="text-zinc-500">Previsto (Mês):</span>
-                        <span className="text-emerald-500 font-medium font-mono">R$ {costs.projectedBRL.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1">
-                      <span>(Sem sincronização de faturamento CSV)</span>
-                    </div>
+                  <div className="text-[10px] mt-1 flex items-center gap-1">
+                    {isIncrease ? (
+                      <ArrowUpRight className="w-3 h-3 text-red-500" />
+                    ) : isDecrease ? (
+                      <ArrowDownRight className="w-3 h-3 text-emerald-500" />
+                    ) : null}
+                    <span className={isIncrease ? "text-red-500" : isDecrease ? "text-emerald-500" : "text-zinc-500"}>
+                      R$ {Math.abs(diff).toFixed(2).replace('.', ',')} {isIncrease ? 'a mais' : isDecrease ? 'a menos' : 'igual'} que no mês de {prevMonthName}
+                    </span>
                   </div>
-                )}
-                {!selectedClient?.firebaseProjectId && (
-                  <div className="text-[10px] text-zinc-500">
-                    Sem Firebase Project ID
-                  </div>
-                )}
+                </div>
               </div>
             );
           })()}

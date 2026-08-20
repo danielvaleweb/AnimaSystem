@@ -1,3 +1,69 @@
+export type InvestmentCategory = 'Ações' | 'FIIs' | 'ETFs' | 'BDRs' | 'Tesouro Direto' | 'CDB' | 'LCI' | 'LCA' | 'Renda Fixa' | 'Criptomoedas' | 'Outros' | 'Caixa';
+
+export type InvestmentPriceSource = 'API' | 'MANUAL' | 'CALCULATED';
+
+export type TransactionType = 'COMPRA' | 'VENDA' | 'APORTE' | 'RESGATE' | 'DIVIDENDO' | 'JCP' | 'RENDIMENTO' | 'JUROS' | 'TAXA' | 'BONIFICAÇÃO' | 'DESDOBRAMENTO' | 'AMORTIZAÇÃO';
+
+export interface InvestmentAsset {
+  id: string;
+  ownerId: string;
+  ticker: string;
+  name: string;
+  category: InvestmentCategory;
+  subCategory?: string;
+  institution?: string;
+  currency: string;
+  priceSource: InvestmentPriceSource;
+  
+  // Dynamic fields recalculated based on transactions
+  quantity: number;
+  averagePrice: number;
+  totalInvested: number;
+  
+  // Fields for external quotes
+  currentPrice: number;
+  lastUpdate?: string;
+  isActive: boolean;
+
+  // Specifics for fixed income/Treasury
+  indexer?: string; // IPCA, Selic, CDI
+  rate?: number; // 110 (for 110% CDI), or 5.5 (for 5.5% IPCA+)
+  maturityDate?: string; // YYYY-MM-DD
+  
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestmentTransaction {
+  id: string;
+  ownerId: string;
+  assetId: string;
+  type: TransactionType;
+  date: string; // YYYY-MM-DD
+  quantity: number;
+  unitPrice: number;
+  grossValue: number;
+  taxes: number; // taxas
+  netValue: number;
+  institution?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+}
+
+export interface PortfolioSnapshot {
+  id: string;
+  ownerId: string;
+  date: string; // YYYY-MM-DD
+  totalInvested: number;
+  currentValue: number;
+  profit: number;
+  rentability: number;
+  contributions: number;
+  yields: number;
+}
+
 export interface KPIData {
   title: string;
   value: string | number;
@@ -78,6 +144,7 @@ export interface ClientData {
   lastGcpMetrics?: any;
   lastRealMetrics?: any;
   gcpBillingCost?: number;
+  gcpBillingCostPrevMonth?: number;
   gcpBillingPeriod?: string;
   gcpBillingLastSync?: string;
   createdAt?: string;

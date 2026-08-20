@@ -169,16 +169,17 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
     if (!client.lastGcpMetrics) return { cost: 0, isReal: false };
     
     const metrics = client.lastGcpMetrics;
-    const USD_TO_BRL = 5.20;
+    const USD_TO_BRL = 5.45;
+    const currentDay = Math.max(1, new Date().getDate());
     
     // Reads
     const readsVal = metrics.reads_billable?.value || metrics.reads_ops?.value || 0;
-    const readsAfterFree = Math.max(0, readsVal - 50000);
+    const readsAfterFree = Math.max(0, readsVal - (50000 * currentDay));
     const readsCostUSD = (readsAfterFree / 100000) * 0.036;
     
     // Writes
     const writesVal = metrics.writes_billable?.value || metrics.writes_ops?.value || 0;
-    const writesAfterFree = Math.max(0, writesVal - 20000);
+    const writesAfterFree = Math.max(0, writesVal - (20000 * currentDay));
     const writesCostUSD = (writesAfterFree / 100000) * 0.108;
     
     // Firestore Storage
@@ -654,7 +655,7 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                     return (
                       <div>
                         <span className="text-emerald-600 font-semibold font-mono">
-                          R$ {costObj.cost.toFixed(costObj.isReal ? 2 : 4)}
+                          R$ {costObj.cost.toFixed(costObj.isReal ? 2 : 4).replace('.', ',')}
                         </span>
                         <span className="block text-[10px] text-zinc-500 mt-0.5">
                           {costObj.isReal ? 'Fatura Real Sincronizada' : 'Estimado por Telemetria'}

@@ -228,7 +228,7 @@ function AppRoutes() {
         <Route path="/auditoria" element={<MainLayout currentView="audit" onNavigate={handleNavigate}><AuditView /></MainLayout>} />
         <Route path="/configuracoes" element={<MainLayout currentView="settings" onNavigate={handleNavigate}><SettingsView /></MainLayout>} />
         <Route path="/personalizacao" element={<MainLayout currentView="customization" onNavigate={handleNavigate}><CustomizationView /></MainLayout>} />
-        <Route path="/investimentos" element={<MainLayout currentView="investments" onNavigate={handleNavigate}><InvestmentsView /></MainLayout>} />
+        <Route path="/investimentos" element={<MainLayout currentView="investments" onNavigate={handleNavigate}><InvestmentsView onNavigate={handleNavigate} /></MainLayout>} />
         <Route path="/agenda" element={<MainLayout currentView="agenda" onNavigate={handleNavigate}><AgendaView onNavigate={handleNavigate} /></MainLayout>} />
         <Route path="/autorizar-colaborador" element={<MainLayout currentView="colab-auth" onNavigate={handleNavigate}><CollaboratorAuthView /></MainLayout>} />
         <Route path="*" element={<Navigate to="/admin" replace />} />

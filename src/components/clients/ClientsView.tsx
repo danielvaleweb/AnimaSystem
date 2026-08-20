@@ -29,16 +29,17 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
     if (!client.lastGcpMetrics) return { cost: 0, isReal: false };
     
     const metrics = client.lastGcpMetrics;
-    const USD_TO_BRL = 5.20;
+    const USD_TO_BRL = 5.45;
+    const currentDay = Math.max(1, new Date().getDate());
     
     // Reads
     const readsVal = metrics.reads_billable?.value || metrics.reads_ops?.value || 0;
-    const readsAfterFree = Math.max(0, readsVal - 50000);
+    const readsAfterFree = Math.max(0, readsVal - (50000 * currentDay));
     const readsCostUSD = (readsAfterFree / 100000) * 0.036;
     
     // Writes
     const writesVal = metrics.writes_billable?.value || metrics.writes_ops?.value || 0;
-    const writesAfterFree = Math.max(0, writesVal - 20000);
+    const writesAfterFree = Math.max(0, writesVal - (20000 * currentDay));
     const writesCostUSD = (writesAfterFree / 100000) * 0.108;
     
     // Firestore Storage
@@ -354,7 +355,7 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                     </span>
                   </td>
                   <td className="p-4">
-                    <div className="text-sm font-medium text-zinc-800">R$ {client.monthlyValue.toFixed(2)}</div>
+                    <div className="text-sm font-medium text-zinc-800">R$ {client.monthlyValue.toFixed(2).replace('.', ',')}</div>
                     <div className="text-xs text-zinc-500 mt-0.5">Venc. dia {client.dueDate}</div>
                   </td>
                   <td className="p-4">
@@ -363,10 +364,10 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                       return (
                         <>
                           <div className="text-sm font-medium text-emerald-600 font-mono">
-                            R$ {costObj.cost.toFixed(costObj.isReal ? 2 : 4)}
+                            R$ {costObj.cost.toFixed(costObj.isReal ? 2 : 4).replace('.', ',')}
                           </div>
                           <div className="text-[10px] text-zinc-500 mt-0.5">
-                            {costObj.isReal ? 'Fatura Real (CSV)' : client.lastGcpMetrics ? 'Estimado por API' : 'Sem métricas'}
+                            {costObj.isReal ? 'Fatura Real (BQ)' : client.lastGcpMetrics ? 'Estimado por API' : 'Sem métricas'}
                           </div>
                         </>
                       );
@@ -477,7 +478,7 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                 <div className="mt-auto space-y-3 pt-4 border-t border-zinc-100">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-zinc-500 text-xs">Mensalidade</span>
-                    <span className="text-zinc-800 font-medium h-4">R$ {client.monthlyValue.toFixed(2)}</span>
+                    <span className="text-zinc-800 font-medium h-4">R$ {client.monthlyValue.toFixed(2).replace('.', ',')}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-zinc-500 text-xs">Custo Cloud</span>
@@ -486,7 +487,7 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                       return (
                         <div className="text-right">
                           <span className="text-emerald-600 font-semibold font-mono h-4">
-                            R$ {costObj.cost.toFixed(costObj.isReal ? 2 : 4)}
+                            R$ {costObj.cost.toFixed(costObj.isReal ? 2 : 4).replace('.', ',')}
                           </span>
                           <span className="block text-[8px] text-zinc-500 leading-none">
                             {costObj.isReal ? 'Fatura Real' : 'Estimado'}

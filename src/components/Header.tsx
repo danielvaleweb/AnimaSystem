@@ -108,13 +108,16 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
             >
               <button
                 onClick={() => item.view && onNavigate?.(item.view)}
-                className={`px-4 py-2 rounded-full text-xs transition-all font-semibold whitespace-nowrap cursor-pointer flex items-center gap-1 ${
+                className={`px-4 py-2 rounded-full text-xs transition-all font-semibold whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                   isActive 
                     ? 'bg-black text-white shadow-xs font-bold' 
                     : 'text-zinc-600 hover:text-black font-medium hover:bg-zinc-50'
                 }`}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {hasSubmenu && (
+                  <ChevronDown className={`w-3 h-3 transition-transform duration-200 opacity-70 ${activeDropdown === item.label ? 'rotate-180' : ''}`} />
+                )}
               </button>
 
               {/* Submenu Dropdown */}

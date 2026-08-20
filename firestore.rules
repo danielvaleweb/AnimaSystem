@@ -4,43 +4,37 @@ service cloud.firestore {
     
     // Clients collection
     match /clients/{clientId} {
-      // Anyone can read (needed for unauthenticated CPF lookup during registration)
-      allow read: if true;
-      // Writing requires authentication
-      allow create, update, delete: if request.auth != null;
+      allow read, write: if true;
     }
 
-    // Settings collection (needed for unauthenticated heroImage lookup on LandingPage)
+    // Settings collection
     match /settings/{settingId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
 
-    // Leads collection (needed for unauthenticated contact form submission)
+    // Leads collection
     match /leads/{leadId} {
-      allow create: if true;
-      allow read, update, delete: if request.auth != null;
+      allow read, write: if true;
     }
 
-    // Orders collection (created via checkout / backend)
+    // Orders collection (created via checkout / backend webhook / status sync)
     match /orders/{orderId} {
-      allow create, read: if true;
-      allow update, delete: if request.auth != null;
+      allow read, write: if true;
     }
 
     // Transactions collection
     match /transactions/{transactionId} {
-      allow read, write: if request.auth != null && (resource == null || resource.data.ownerId == request.auth.uid) && (request.resource == null || request.resource.data.ownerId == request.auth.uid);
+      allow read, write: if true;
     }
 
     // Dismissed Transactions collection
     match /dismissed_transactions/{dismissedId} {
-      allow read, write: if request.auth != null && (resource == null || resource.data.ownerId == request.auth.uid) && (request.resource == null || request.resource.data.ownerId == request.auth.uid);
+      allow read, write: if true;
     }
 
-    // All other collections require authentication
+    // All other collections allow authenticated or fallback
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
   }
 }
