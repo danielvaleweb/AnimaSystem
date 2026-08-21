@@ -3,7 +3,7 @@ import {
   ArrowLeft, Users, Database,
   FileText, MoreVertical, Edit2, Ban, Trash2, CheckCircle,
   Rocket, Power, Code, Hand, Clock, Check, Sparkles, CreditCard, Phone,
-  Copy, Globe, Calendar
+  Copy, Globe, Calendar, ExternalLink, Link as LinkIcon
 } from 'lucide-react';
 import {  ClientData } from '../../types';
 import {  cn, formatClientRenewalDate, getClientDaysUntilRenewal, isClientRenewalAlert, getClientDomainInfo } from '../../utils';
@@ -33,6 +33,25 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
   const [isTrialModalOpen, setIsTrialModalOpen] = useState(false);
   const [trialEndDate, setTrialEndDate] = useState('');
   const [copiedGuardId, setCopiedGuardId] = useState(false);
+  const [copiedRenewalLink, setCopiedRenewalLink] = useState(false);
+
+  const getRenewalUrl = (targetClient: ClientData) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://animasystem.com.br';
+    const planParam = (targetClient.plan || 'profissional').toLowerCase().includes('starter') 
+      ? 'starter' 
+      : (targetClient.plan || '').toLowerCase().includes('enterprise') 
+      ? 'enterprise' 
+      : 'pro';
+    return `${origin}/?page=checkout&plan=${planParam}&isRenewal=true&client=${targetClient.id}`;
+  };
+
+  const handleCopyRenewalLink = () => {
+    if (!client) return;
+    const url = getRenewalUrl(client);
+    navigator.clipboard.writeText(url);
+    setCopiedRenewalLink(true);
+    setTimeout(() => setCopiedRenewalLink(false), 2500);
+  };
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -529,6 +548,31 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
         {/* Header Actions Menu */}
         <div className="flex items-center gap-2">
           {!isClientView && (
+            <button
+              onClick={handleCopyRenewalLink}
+              title="Copiar Link de Renovação do Cliente"
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-xs",
+                copiedRenewalLink 
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                  : "bg-white text-zinc-700 hover:bg-zinc-50 border-zinc-200 hover:border-zinc-300"
+              )}
+            >
+              {copiedRenewalLink ? (
+                <>
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Link Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <LinkIcon className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>Copiar Link de Renovação</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {!isClientView && (
             <div className="relative">
               <button 
                 onClick={() => setShowMenu(!showMenu)}
@@ -711,7 +755,7 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                 </div>
                 <div>
                   <span className="block text-sm text-zinc-500 mb-1">Próxima Renovação</span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className={cn(
                       "font-mono font-semibold text-sm",
                       isClientRenewalAlert(client) ? "text-rose-600 font-bold" : "text-zinc-800"
@@ -730,6 +774,24 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                         {getClientDaysUntilRenewal(client) <= 0 ? "Vencido" : `${getClientDaysUntilRenewal(client)} dias restantes`}
                       </span>
                     )}
+
+                    <button
+                      onClick={handleCopyRenewalLink}
+                      title="Copiar Link Direto de Renovação"
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline ml-1 cursor-pointer bg-zinc-100 hover:bg-zinc-200 px-2 py-0.5 rounded-md text-zinc-800 transition-colors"
+                    >
+                      {copiedRenewalLink ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span className="text-emerald-700 font-bold">Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3 text-zinc-600" />
+                          <span>Copiar Link</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>

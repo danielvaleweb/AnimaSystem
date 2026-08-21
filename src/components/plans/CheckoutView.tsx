@@ -36,7 +36,12 @@ export default function CheckoutView() {
   const searchParams = new URLSearchParams(location.search);
   const planParam = (searchParams.get('plan') || 'profissional').toLowerCase();
   const supportParam = searchParams.get('support') === 'true';
-  const isRenewal = searchParams.get('renov') === 'true' || searchParams.has('renov') || searchParams.get('type') === 'renewal';
+  const isRenewal = searchParams.get('isRenewal') === 'true' || 
+    searchParams.get('renov') === 'true' || 
+    searchParams.has('renov') || 
+    searchParams.get('type') === 'renewal' || 
+    searchParams.get('type') === 'renovacao' || 
+    planParam === 'renovacao';
   const clientIdParam = searchParams.get('client') || searchParams.get('clientId') || '';
   const initialMonths = Math.max(1, parseInt(searchParams.get('months') || '1', 10));
 

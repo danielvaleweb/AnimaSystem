@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Plus, MoreVertical, Edit2, Ban, Trash2, CheckCircle2, LayoutGrid, List, Rocket, Hand, Power, Code, Clock, ChevronDown, FileText, X, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Search, Filter, Plus, MoreVertical, Edit2, Ban, Trash2, CheckCircle2, LayoutGrid, List, Rocket, Hand, Power, Code, Clock, ChevronDown, FileText, X, ShieldAlert, ShieldCheck, Copy, Check, Link as LinkIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ClientData } from '../../types';
 import { cn, formatClientRenewalDate, getClientDaysUntilRenewal, isClientRenewalAlert, getClientRenewalInfo, getClientDomainInfo } from '../../utils';
@@ -77,6 +77,25 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
   const [editingClient, setEditingClient] = useState<ClientData | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [clientToDelete, setClientToDelete] = useState<string | null>(null);
+  const [copiedRenewalId, setCopiedRenewalId] = useState<string | null>(null);
+
+  const getClientRenewalUrl = (client: ClientData) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://animasystem.com.br';
+    const planParam = (client.plan || 'profissional').toLowerCase().includes('starter') 
+      ? 'starter' 
+      : (client.plan || '').toLowerCase().includes('enterprise') 
+      ? 'enterprise' 
+      : 'pro';
+    return `${origin}/?page=checkout&plan=${planParam}&isRenewal=true&client=${client.id}`;
+  };
+
+  const handleCopyRenewalUrl = (e: React.MouseEvent, client: ClientData) => {
+    e.stopPropagation();
+    const url = getClientRenewalUrl(client);
+    navigator.clipboard.writeText(url);
+    setCopiedRenewalId(client.id);
+    setTimeout(() => setCopiedRenewalId(null), 2500);
+  };
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -453,6 +472,19 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                       )}
 
                       <button
+                        onClick={(e) => handleCopyRenewalUrl(e, client)}
+                        title="Copiar Link de Renovação do Cliente"
+                        className={cn(
+                          "p-1.5 rounded-lg border transition-all cursor-pointer",
+                          copiedRenewalId === client.id
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-600 font-bold"
+                            : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                        )}
+                      >
+                        {copiedRenewalId === client.id ? <Check className="w-3.5 h-3.5" /> : <LinkIcon className="w-3.5 h-3.5" />}
+                      </button>
+
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setGuardClient(client);
@@ -533,6 +565,19 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                         Em construção
                       </span>
                     )}
+
+                    <button
+                      onClick={(e) => handleCopyRenewalUrl(e, client)}
+                      title="Copiar Link de Renovação do Cliente"
+                      className={cn(
+                        "p-1 rounded-lg border transition-all cursor-pointer",
+                        copiedRenewalId === client.id
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-600 font-bold"
+                          : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                      )}
+                    >
+                      {copiedRenewalId === client.id ? <Check className="w-3 h-3 text-emerald-600" /> : <LinkIcon className="w-3 h-3" />}
+                    </button>
 
                     <button
                       onClick={(e) => {
