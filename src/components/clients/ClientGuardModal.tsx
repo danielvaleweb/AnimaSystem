@@ -22,7 +22,7 @@ export function ClientGuardModal({ client, onClose, onStatusChanged }: ClientGua
   const [copiedType, setCopiedType] = useState<string | null>(null);
   const [showLivePreview, setShowLivePreview] = useState(false);
 
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://ais-pre-p5xzmtslhtg7gruyoqvdo4-373656924597.us-west2.run.app';
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://anima-system.vercel.app';
   const dynamicScriptTag = `<script src="${currentOrigin}/api/guard.js?client=${client.id}"></script>`;
 
   const standaloneScript = `<script>

@@ -258,7 +258,7 @@ async function startServer() {
   var customDomain = (scriptUrl && scriptUrl.searchParams) ? (scriptUrl.searchParams.get('domain') || window.location.hostname) : window.location.hostname;
   var apiBase = (scriptUrl && scriptUrl.origin && scriptUrl.origin !== 'null' && scriptUrl.origin.indexOf('http') === 0) 
     ? scriptUrl.origin 
-    : (typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://ais-pre-p5xzmtslhtg7gruyoqvdo4-373656924597.us-west2.run.app');
+    : 'https://anima-system.vercel.app';
 
   function renderSuspensionScreen(data) {
     if (document.getElementById('animasystem-guard-lock')) return;
@@ -672,7 +672,7 @@ async function startServer() {
 
     var planSlug = (data && data.planSlug) ? data.planSlug : 'pro';
     var targetClientParam = clientId || (data && data.id) || '';
-    var checkoutHref = apiBase + '/checkout?renov=true&client=' + encodeURIComponent(targetClientParam) + '&plan=' + encodeURIComponent(planSlug);
+    var checkoutHref = apiBase + '/checkout?plan=' + encodeURIComponent(planSlug) + '&isRenewal=true&renov=true&client=' + encodeURIComponent(targetClientParam);
 
     var banner = document.createElement('div');
     banner.id = 'animasystem-renewal-banner';
