@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { 
   Check, ArrowLeft, Sparkles, Shield, Zap, ArrowUpRight, 
   CheckCircle2, ChevronRight, HelpCircle, Layers, Server, 

@@ -5,7 +5,7 @@ import {
   ShieldCheck, CheckCircle2, Building, User, FileText, Globe, 
   Tag, ChevronLeft, ChevronRight, Info, Plus, Sparkles, Headphones, Server, Zap, X, ArrowRight, Lock, Phone, Mail, ExternalLink
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { collection, addDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 

@@ -86,7 +86,7 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
       : (client.plan || '').toLowerCase().includes('enterprise') 
       ? 'enterprise' 
       : 'pro';
-    return `${origin}/?page=checkout&plan=${planParam}&isRenewal=true&client=${client.id}`;
+    return `${origin}/checkout?plan=${planParam}&isRenewal=true&client=${client.id}`;
   };
 
   const handleCopyRenewalUrl = (e: React.MouseEvent, client: ClientData) => {

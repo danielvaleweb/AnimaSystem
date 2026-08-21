@@ -42,7 +42,7 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
       : (targetClient.plan || '').toLowerCase().includes('enterprise') 
       ? 'enterprise' 
       : 'pro';
-    return `${origin}/?page=checkout&plan=${planParam}&isRenewal=true&client=${targetClient.id}`;
+    return `${origin}/checkout?plan=${planParam}&isRenewal=true&client=${targetClient.id}`;
   };
 
   const handleCopyRenewalLink = () => {

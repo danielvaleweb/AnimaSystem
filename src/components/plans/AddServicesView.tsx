@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { Check, ArrowLeft, ShieldCheck, Headphones, Zap, ArrowUpRight, CheckCircle2, Plus } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 

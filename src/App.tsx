@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, Navigate, useLocation, useParams } from 'react-router-dom';
 import { NotificationProvider } from './components/NotificationContext';
 import { cn } from './utils';
 import { Header } from './components/Header';
@@ -111,6 +111,27 @@ function MainLayout({ currentView, children, onNavigate }: { currentView: ViewTy
   );
 }
 
+function SmartRootRoute() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const page = searchParams.get('page');
+
+  if (page === 'checkout' || searchParams.has('isRenewal') || searchParams.has('renov') || searchParams.get('plan') === 'renovacao') {
+    return <CheckoutView />;
+  }
+  if (page === 'portfolio') {
+    return <PortfolioPage />;
+  }
+  if (page === 'services' || page === 'adicionar-servicos') {
+    return <AddServicesView />;
+  }
+  if (page === 'admin-cliente') {
+    return <ClientAdminView />;
+  }
+
+  return <LandingPage onEnter={() => {}} />;
+}
+
 function AppRoutes() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<User | null | undefined>(undefined);
@@ -208,7 +229,7 @@ function AppRoutes() {
   if (currentUser && userRole === 'collaborator') {
     return (
       <Routes>
-        <Route path="/" element={<LandingPage onEnter={() => {}} />} />
+        <Route path="/" element={<SmartRootRoute />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/planos/:planName" element={<PlanDetailView />} />
         <Route path="/plano/:planName" element={<PlanDetailView />} />
@@ -239,7 +260,7 @@ function AppRoutes() {
   // Public/Unauthenticated Routing
   return (
     <Routes>
-      <Route path="/" element={<LandingPage onEnter={() => {}} />} />
+      <Route path="/" element={<SmartRootRoute />} />
       <Route path="/portfolio" element={<PortfolioPage />} />
       <Route path="/planos/:planName" element={<PlanDetailView />} />
       <Route path="/plano/:planName" element={<PlanDetailView />} />
@@ -253,8 +274,6 @@ function AppRoutes() {
     </Routes>
   );
 }
-
-import { useParams } from 'react-router-dom';
 
 function ClientPortalRoute({ clientDocId }: { clientDocId: string }) {
   const { clientId } = useParams<{ clientId: string }>();
