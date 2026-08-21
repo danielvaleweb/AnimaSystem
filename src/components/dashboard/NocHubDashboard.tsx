@@ -144,7 +144,7 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
     }, 1500);
   };
 
-  // Financial summary calculations: Only revenue that has already entered (paid) in the current year
+  // Financial summary calculations: Only revenue that has already entered (paid) from clients in the current year
   const activeClients = clients.filter(c => c.status === 'active' || c.status === 'trial');
   const currentMRR = activeClients.reduce((sum, c) => sum + (Number(c.monthlyValue) || 0), 0);
 
@@ -156,10 +156,21 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
       const tYear = new Date(t.date).getFullYear();
       if (!isNaN(tYear) && tYear !== currentYear) return false;
     }
-    return true;
+    // Only count transactions that belong to clients (exclude Google Cloud or generic infra entries)
+    const titleLower = (t.title || '').toLowerCase();
+    const clientNameLower = (t.clientName || '').toLowerCase();
+    if (titleLower.includes('google cloud') || clientNameLower.includes('google cloud')) {
+      return false;
+    }
+    const isClient = (
+      (t.clientId && clients.some(c => c.id === t.clientId)) ||
+      (t.clientName && clients.some(c => c.name.toLowerCase() === clientNameLower)) ||
+      Boolean(t.clientName)
+    );
+    return isClient;
   });
 
-  // Only sum what has already actually entered (paid transactions)
+  // Only sum what has already actually entered from clients (paid transactions)
   const currentARR = paidRevenuesThisYear.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   const totalRevenue = currentARR;
@@ -386,7 +397,7 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
               {transactions
                 .filter(t => t.status === 'paid')
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                .slice(0, 3)
+                .slice(0, 6)
                 .map((trx) => (
                   <div key={trx.id} className="flex justify-between items-center bg-zinc-950 border border-zinc-900 p-3 rounded-2xl">
                     <div className="flex items-center gap-3">
@@ -407,9 +418,9 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
                     </div>
                   </div>
                 ))}
-                {transactions.filter(t => t.type === 'entrada' && t.status === 'paid').length === 0 && (
+                {transactions.filter(t => t.status === 'paid').length === 0 && (
                   <div className="text-center py-4 text-xs text-zinc-500 font-light border border-dashed border-zinc-900 rounded-2xl">
-                    Nenhuma entrada recente.
+                    Nenhuma movimentação recente.
                   </div>
                 )}
             </div>
@@ -836,7 +847,7 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
                                 ) : isDecrease ? (
                                   <ArrowDownRight className="w-4 h-4 text-emerald-500" />
                                 ) : null}
-                                <p className="text-sm font-semibold font-mono text-emerald-600">R$ {costFormatted}</p>
+                                <p className={`text-sm font-semibold font-mono ${cost > 0 ? 'text-red-500' : 'text-emerald-600'}`}>R$ {costFormatted}</p>
                               </div>
                               <p className="text-[10px] text-zinc-500 font-mono mt-1">{isIncrease ? `+ R$ ${diffFormatted}` : isDecrease ? `- R$ ${diffFormatted}` : 'Sem alteração'}</p>
                             </div>

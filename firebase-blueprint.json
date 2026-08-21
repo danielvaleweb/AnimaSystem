@@ -75,6 +75,22 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["orderId", "planId", "customerName", "customerCpf", "amount", "status"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Represents a promotional discount coupon for checkouts.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "discountPercent": { "type": "number" },
+        "description": { "type": "string" },
+        "active": { "type": "boolean" },
+        "usedCount": { "type": "number" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "expiresAt": { "type": "string" }
+      },
+      "required": ["code", "discountPercent", "active"]
     }
   },
   "firestore": {
@@ -93,6 +109,10 @@
     "/orders/{orderId}": {
       "schema": { "$ref": "#/entities/Order" },
       "description": "Stores checkout orders linked to Asaas."
+    },
+    "/coupons/{couponId}": {
+      "schema": { "$ref": "#/entities/Coupon" },
+      "description": "Stores promotional and renewal discount coupons."
     }
   }
 }

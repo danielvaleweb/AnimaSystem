@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Plus, MoreVertical, Edit2, Ban, Trash2, CheckCircle2, LayoutGrid, List, Rocket, Hand, Power, Code, Clock, ChevronDown, FileText, X, ChevronDown as CD2 } from 'lucide-react';
+import { Search, Filter, Plus, MoreVertical, Edit2, Ban, Trash2, CheckCircle2, LayoutGrid, List, Rocket, Hand, Power, Code, Clock, ChevronDown, FileText, X, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ClientData } from '../../types';
-import { cn } from '../../utils';
+import { cn, formatClientRenewalDate, getClientDaysUntilRenewal, isClientRenewalAlert, getClientRenewalInfo } from '../../utils';
 import { ClientModal } from './ClientModal';
+import { ClientGuardModal } from './ClientGuardModal';
 import { ConfirmationModal } from '../ConfirmationModal';
 import { db, auth, app } from '../../lib/firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, updateDoc, query, where } from 'firebase/firestore';
@@ -12,6 +13,7 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
   const [clients, setClients] = useState<ClientData[]>([]);
   const [isContractsModalOpen, setIsContractsModalOpen] = useState(false);
   const [openClientPlanDropdownId, setOpenClientPlanDropdownId] = useState<string | null>(null);
+  const [guardClient, setGuardClient] = useState<ClientData | null>(null);
   const handleFirestoreError = (err: any, type: string, ref: string) => { console.error(type, ref, err); };
   const updateClientField = async (clientId: string, data: any) => {
     try {
@@ -318,6 +320,7 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                 <th className="font-medium p-4 pl-6">Cliente</th>
                 <th className="font-medium p-4">Plano</th>
                 <th className="font-medium p-4">Mensalidade</th>
+                <th className="font-medium p-4">Próxima Renovação</th>
                 <th className="font-medium p-4">Custo Cloud</th>
                 <th className="font-medium p-4">Status</th>
                 <th className="font-medium p-4">Firebase ID</th>
@@ -360,6 +363,49 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                   </td>
                   <td className="p-4">
                     {(() => {
+                      const renewInfo = getClientRenewalInfo(client);
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={cn(
+                            "text-sm font-medium font-mono",
+                            renewInfo.isAutoSuspended 
+                              ? "text-rose-700 font-bold" 
+                              : renewInfo.isOverdue 
+                              ? "text-rose-600 font-bold" 
+                              : renewInfo.showWarning 
+                              ? "text-amber-600 font-semibold" 
+                              : "text-zinc-800"
+                          )}>
+                            {formatClientRenewalDate(client)}
+                          </span>
+                          {renewInfo.isAutoSuspended ? (
+                            <span 
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-600 text-white shadow-xs"
+                              title={`Site suspenso automaticamente (${renewInfo.overdueDays} dias de atraso)`}
+                            >
+                              Bloqueado (8d+)
+                            </span>
+                          ) : renewInfo.isOverdue ? (
+                            <span 
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200"
+                              title={`Vencido há ${renewInfo.overdueDays} dias. Tolerância restante: ${renewInfo.toleranceRemaining} dias`}
+                            >
+                              Vencido ({renewInfo.overdueDays}d atraso)
+                            </span>
+                          ) : renewInfo.showWarning ? (
+                            <span 
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200"
+                              title={`Vencimento em ${renewInfo.daysUntilDue} dias`}
+                            >
+                              {renewInfo.daysUntilDue === 0 ? "Vence hoje" : `Falta ${renewInfo.daysUntilDue}d`}
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
+                  </td>
+                  <td className="p-4">
+                    {(() => {
                       const costObj = getClientGcpCost(client);
                       return (
                         <>
@@ -374,36 +420,54 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                     })()}
                   </td>
                   <td className="p-4">
-                    {client.status === 'active' && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent border border-accent text-xs font-semibold text-black">
-                        <Rocket className="w-3.5 h-3.5" />
-                        Ativo
-                      </span>
-                    )}
-                    {client.status === 'trial' && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500 border border-blue-500 text-xs font-semibold text-white">
-                        <Clock className="w-3.5 h-3.5" />
-                        {client?.trialEndDate ? 'Trial - ' + Math.max(0, Math.ceil((new Date(client.trialEndDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24))) + ' dias restantes' : 'Trial'}
-                      </span>
-                    )}
-                    {client.status === 'suspended' && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500 border border-rose-500 text-xs font-semibold text-white">
-                        <Hand className="w-3.5 h-3.5" />
-                        Suspenso
-                      </span>
-                    )}
-                    {client.status === 'ended' && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-500 border border-zinc-500 text-xs font-semibold text-white">
-                        <Power className="w-3.5 h-3.5" />
-                        Encerrado
-                      </span>
-                    )}
-                    {client.status === 'developing' && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500 border border-purple-500 text-xs font-semibold text-white">
-                        <Code className="w-3.5 h-3.5" />
-                        Em construção
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {client.status === 'active' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent border border-accent text-xs font-semibold text-black">
+                          <Rocket className="w-3.5 h-3.5" />
+                          Ativo
+                        </span>
+                      )}
+                      {client.status === 'trial' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500 border border-blue-500 text-xs font-semibold text-white">
+                          <Clock className="w-3.5 h-3.5" />
+                          {client?.trialEndDate ? 'Trial - ' + Math.max(0, Math.ceil((new Date(client.trialEndDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24))) + ' dias restantes' : 'Trial'}
+                        </span>
+                      )}
+                      {client.status === 'suspended' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500 border border-rose-500 text-xs font-semibold text-white animate-pulse">
+                          <Hand className="w-3.5 h-3.5" />
+                          Suspenso
+                        </span>
+                      )}
+                      {client.status === 'ended' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-500 border border-zinc-500 text-xs font-semibold text-white">
+                          <Power className="w-3.5 h-3.5" />
+                          Encerrado
+                        </span>
+                      )}
+                      {client.status === 'developing' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500 border border-purple-500 text-xs font-semibold text-white">
+                          <Code className="w-3.5 h-3.5" />
+                          Em construção
+                        </span>
+                      )}
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setGuardClient(client);
+                        }}
+                        title="Configurar Proteção Web & Suspensão (Guard)"
+                        className={cn(
+                          "p-1.5 rounded-lg border transition-all cursor-pointer opacity-70 group-hover:opacity-100",
+                          client.status === 'suspended'
+                            ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
+                            : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                        )}
+                      >
+                        {client.status === 'suspended' ? <ShieldAlert className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </td>
                   <td className="p-4">
                     <span className="font-mono text-xs text-zinc-500 bg-zinc-100 px-2 py-1 rounded-md border border-zinc-200 text-zinc-600">
@@ -438,7 +502,7 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                         client.logoInitials
                     )}
                   </div>
-                  <div>
+                  <div className="flex items-center gap-1.5">
                     {client.status === 'active' && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent border border-accent text-[10px] font-semibold text-black">
                         <Rocket className="w-3 h-3" />
@@ -448,11 +512,11 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                     {client.status === 'trial' && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500 border border-blue-500 text-[10px] font-semibold text-white">
                         <Clock className="w-3 h-3" />
-                        {client?.trialEndDate ? 'Trial - ' + Math.max(0, Math.ceil((new Date(client.trialEndDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24))) + ' dias restantes' : 'Trial'}
+                        {client?.trialEndDate ? 'Trial - ' + Math.max(0, Math.ceil((new Date(client.trialEndDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24))) + ' dias' : 'Trial'}
                       </span>
                     )}
                     {client.status === 'suspended' && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500 border border-rose-500 text-[10px] font-semibold text-white">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500 border border-rose-500 text-[10px] font-semibold text-white animate-pulse">
                         <Hand className="w-3 h-3" />
                         Suspenso
                       </span>
@@ -469,6 +533,22 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                         Em construção
                       </span>
                     )}
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setGuardClient(client);
+                      }}
+                      title="Configurar Proteção Web & Suspensão (Guard)"
+                      className={cn(
+                        "p-1 rounded-lg border transition-all cursor-pointer",
+                        client.status === 'suspended'
+                          ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
+                          : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                      )}
+                    >
+                      {client.status === 'suspended' ? <ShieldAlert className="w-3 h-3" /> : <ShieldCheck className="w-3 h-3" />}
+                    </button>
                   </div>
                 </div>
 
@@ -500,6 +580,50 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                     <span className="text-zinc-500 text-xs">Plano</span>
                     <span className="text-zinc-800 font-medium h-4">{client.plan}</span>
                   </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-zinc-500 text-xs">Próxima renovação</span>
+                    {(() => {
+                      const renewInfo = getClientRenewalInfo(client);
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <span className={cn(
+                            "font-medium text-xs font-mono",
+                            renewInfo.isAutoSuspended 
+                              ? "text-rose-700 font-bold" 
+                              : renewInfo.isOverdue 
+                              ? "text-rose-600 font-bold" 
+                              : renewInfo.showWarning 
+                              ? "text-amber-600 font-semibold" 
+                              : "text-zinc-800"
+                          )}>
+                            {formatClientRenewalDate(client)}
+                          </span>
+                          {renewInfo.isAutoSuspended ? (
+                            <span 
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-600 text-white shadow-xs"
+                              title={`Site suspenso automaticamente (${renewInfo.overdueDays} dias de atraso)`}
+                            >
+                              Bloqueado (8d+)
+                            </span>
+                          ) : renewInfo.isOverdue ? (
+                            <span 
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200"
+                              title={`Vencido há ${renewInfo.overdueDays} dias. Tolerância restante: ${renewInfo.toleranceRemaining} dias`}
+                            >
+                              Vencido ({renewInfo.overdueDays}d)
+                            </span>
+                          ) : renewInfo.showWarning ? (
+                            <span 
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200"
+                              title={`Vencimento em ${renewInfo.daysUntilDue} dias`}
+                            >
+                              {renewInfo.daysUntilDue === 0 ? "Hoje" : `Falta ${renewInfo.daysUntilDue}d`}
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
             ))}
@@ -511,6 +635,16 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
           </div>
         )}
       </div>
+
+      {guardClient && (
+        <ClientGuardModal
+          client={guardClient}
+          onClose={() => setGuardClient(null)}
+          onStatusChanged={(newSt) => {
+            setClients(prev => prev.map(c => c.id === guardClient.id ? { ...c, status: newSt } : c));
+          }}
+        />
+      )}
 
       {isModalOpen && (
         <ClientModal 
@@ -564,7 +698,7 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                         className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-accent flex items-center justify-between gap-1 select-none cursor-pointer text-left"
                       >
                         <span>{c.plan || 'Starter'}</span>
-                        <CD2 className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 shrink-0 ${openClientPlanDropdownId === c.id ? 'rotate-180' : ''}`} />
+                        <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 shrink-0 ${openClientPlanDropdownId === c.id ? 'rotate-180' : ''}`} />
                       </button>
                       <AnimatePresence>
                         {openClientPlanDropdownId === c.id && (

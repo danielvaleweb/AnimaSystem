@@ -4,12 +4,12 @@ import {
   DollarSign, ArrowUpRight, ArrowDownRight, CreditCard, 
   QrCode, AlertCircle, FileText, Download, Filter, Search,
   CheckCircle2, Clock, Plus, X, ArrowUpCircle, ArrowDownCircle,
-  Edit2, Trash2, ChevronDown, RefreshCw, TrendingUp } from 'lucide-react';
+  Edit2, Trash2, ChevronDown, RefreshCw, TrendingUp, Tag, Percent, Copy, Check, Sparkles, Share2, ExternalLink, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNotification } from '../NotificationContext';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
-import { TransactionData } from '../../types';
+import { TransactionData, CouponData } from '../../types';
 import { KPICard } from '../KPICard';
 import { ConfirmationModal } from '../ConfirmationModal';
 
@@ -101,6 +101,18 @@ export function FinanceView({ onNavigate }: { onNavigate?: (view: any, id?: stri
   
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Coupon Generator States
+  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
+  const [coupons, setCoupons] = useState<CouponData[]>([]);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState<number>(15);
+  const [couponDescription, setCouponDescription] = useState('');
+  const [couponExpiresAt, setCouponExpiresAt] = useState('');
+  const [isSavingCoupon, setIsSavingCoupon] = useState(false);
+  const [copiedCouponCode, setCopiedCouponCode] = useState<string | null>(null);
+  const [copiedCouponLink, setCopiedCouponLink] = useState<string | null>(null);
+  const [couponSuccessFeedback, setCouponSuccessFeedback] = useState<string | null>(null);
+
   const [isOverdueModalOpen, setIsOverdueModalOpen] = useState(false);
   const [generatingBoletoId, setGeneratingBoletoId] = useState<string | null>(null);
   const [generatedBoleto, setGeneratedBoleto] = useState<{id: string, code: string, newValue: number} | null>(null);
@@ -123,6 +135,111 @@ export function FinanceView({ onNavigate }: { onNavigate?: (view: any, id?: stri
     gateway: 'manual',
     date: new Date().toISOString().split('T')[0],
   });
+
+  // Coupons realtime listener
+  useEffect(() => {
+    const q = query(collection(db, 'coupons'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: CouponData[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as CouponData);
+      });
+      list.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+      setCoupons(list);
+    }, (err) => {
+      console.warn('Erro ao carregar cupons:', err);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Helper to generate a random code
+  const handleGenerateRandomCode = () => {
+    const prefixes = ['PROMO', 'RENOVA', 'DESCONTO', 'VIP', 'CLIENTE', 'BLACK'];
+    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+    const randNum = Math.floor(10 + Math.random() * 90);
+    setCouponCode(`${prefix}${couponDiscount || randNum}`);
+  };
+
+  // Helper to handle create coupon
+  const handleSaveCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanCode = couponCode.trim().toUpperCase();
+    if (!cleanCode) {
+      alert('Por favor, informe o código do cupom.');
+      return;
+    }
+    if (couponDiscount <= 0 || couponDiscount > 100) {
+      alert('A porcentagem de desconto deve ser entre 1% e 100%.');
+      return;
+    }
+
+    setIsSavingCoupon(true);
+    try {
+      await addDoc(collection(db, 'coupons'), {
+        code: cleanCode,
+        discountPercent: Number(couponDiscount),
+        description: couponDescription.trim() || '',
+        active: true,
+        usedCount: 0,
+        ownerId: auth.currentUser?.uid || 'system',
+        createdAt: new Date().toISOString(),
+        expiresAt: couponExpiresAt || null,
+      });
+
+      setCouponCode('');
+      setCouponDescription('');
+      setCouponExpiresAt('');
+      setCouponSuccessFeedback(`Cupom ${cleanCode} criado com ${couponDiscount}% de desconto!`);
+      setTimeout(() => setCouponSuccessFeedback(null), 4000);
+    } catch (err: any) {
+      console.error('Erro ao cadastrar cupom:', err);
+      alert('Erro ao salvar cupom no banco: ' + (err.message || 'Falha desconhecida'));
+    } finally {
+      setIsSavingCoupon(false);
+    }
+  };
+
+  // Toggle active
+  const handleToggleCouponActive = async (c: CouponData) => {
+    if (!c.id) return;
+    try {
+      await updateDoc(doc(db, 'coupons', c.id), {
+        active: !c.active
+      });
+    } catch (err) {
+      console.error('Erro ao atualizar status do cupom:', err);
+    }
+  };
+
+  // Delete coupon
+  const handleDeleteCoupon = async (id?: string) => {
+    if (!id) return;
+    if (!window.confirm('Tem certeza que deseja remover este cupom?')) return;
+    try {
+      await deleteDoc(doc(db, 'coupons', id));
+    } catch (err) {
+      console.error('Erro ao excluir cupom:', err);
+    }
+  };
+
+  // Copy coupon code
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCouponCode(code);
+    setTimeout(() => setCopiedCouponCode(null), 2500);
+  };
+
+  // Copy checkout link
+  const handleCopyLink = (code: string) => {
+    const link = `${window.location.origin}/checkout?coupon=${encodeURIComponent(code)}`;
+    navigator.clipboard.writeText(link);
+    setCopiedCouponLink(code);
+    setTimeout(() => setCopiedCouponLink(null), 2500);
+  };
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -398,6 +515,13 @@ export function FinanceView({ onNavigate }: { onNavigate?: (view: any, id?: stri
         >
           <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
           {isSyncing ? "Atualizando..." : "Atualizar dados"}
+        </button>
+        <button 
+          onClick={() => setIsCouponModalOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-900 hover:bg-black text-white font-semibold rounded-xl transition-all w-full sm:w-auto text-sm cursor-pointer shadow-sm border border-zinc-700/60"
+        >
+          <Tag className="w-4 h-4 text-[#d4ff00]" />
+          Gerar Cupom de Desconto
         </button>
         <button 
           onClick={() => setIsModalOpen(true)}
@@ -1041,6 +1165,274 @@ export function FinanceView({ onNavigate }: { onNavigate?: (view: any, id?: stri
           </div>
         )}
       </AnimatePresence>
+      {/* Coupon Generator & Management Modal */}
+      <AnimatePresence>
+        {isCouponModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col my-8 max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/80">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-black text-[#d4ff00] flex items-center justify-center shadow-xs">
+                    <Tag className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-zinc-900">
+                      Gerador de Cupons de Desconto
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Crie cupons promocionais para seus clientes utilizarem no checkout e renovações
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsCouponModalOpen(false)}
+                  className="w-9 h-9 rounded-full bg-zinc-200/80 hover:bg-zinc-300 text-zinc-600 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Modal Body: 2 Columns (Left: Create Form, Right: List) */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 overflow-y-auto divide-y lg:divide-y-0 lg:divide-x divide-zinc-100 flex-1">
+                
+                {/* LEFT: Form to Create New Coupon */}
+                <div className="lg:col-span-5 p-6 space-y-6">
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Novo Cupom</span>
+                    <h4 className="text-base font-bold text-zinc-900 mt-0.5">Definir Código & Porcentagem</h4>
+                  </div>
+
+                  {couponSuccessFeedback && (
+                    <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{couponSuccessFeedback}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSaveCoupon} className="space-y-4">
+                    {/* Coupon Code Input */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-zinc-700">Código do Cupom</label>
+                        <button
+                          type="button"
+                          onClick={handleGenerateRandomCode}
+                          className="text-[11px] font-bold text-black hover:text-zinc-700 inline-flex items-center gap-1 cursor-pointer bg-zinc-100 hover:bg-zinc-200 px-2 py-0.5 rounded-md"
+                        >
+                          <Sparkles className="w-3 h-3 text-[#b0cc00]" />
+                          Gerar Sugestão
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Ex: PROMO20, VIP15, CLIENTEVIP"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black text-sm font-bold uppercase tracking-wider bg-zinc-50"
+                        required
+                      />
+                    </div>
+
+                    {/* Discount Percentage */}
+                    <div>
+                      <label className="text-xs font-semibold text-zinc-700 block mb-1.5">
+                        Porcentagem de Desconto: <strong className="text-zinc-900 font-extrabold text-sm">{couponDiscount}%</strong>
+                      </label>
+                      
+                      {/* Preset percentage pills */}
+                      <div className="grid grid-cols-4 gap-2 mb-3">
+                        {[5, 10, 15, 20, 25, 30, 40, 50].map((pct) => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => setCouponDiscount(pct)}
+                            className={`py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                              couponDiscount === pct
+                                ? 'bg-black text-[#d4ff00] border-black shadow-xs'
+                                : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border-zinc-200'
+                            }`}
+                          >
+                            {pct}%
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Custom Percentage Slider/Input */}
+                      <div className="flex items-center gap-3 bg-zinc-50 p-2.5 rounded-xl border border-zinc-200">
+                        <Percent className="w-4 h-4 text-zinc-400 shrink-0" />
+                        <input
+                          type="range"
+                          min="1"
+                          max="100"
+                          value={couponDiscount}
+                          onChange={(e) => setCouponDiscount(Number(e.target.value))}
+                          className="w-full accent-black cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-zinc-900 w-10 text-right">
+                          {couponDiscount}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Description / Note */}
+                    <div>
+                      <label className="text-xs font-semibold text-zinc-700 block mb-1.5">
+                        Descrição / Observação (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Válido para renovação antecipada"
+                        value={couponDescription}
+                        onChange={(e) => setCouponDescription(e.target.value)}
+                        className="w-full px-3.5 py-2 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black text-xs bg-zinc-50"
+                      />
+                    </div>
+
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={isSavingCoupon || !couponCode.trim()}
+                      className="w-full py-3 px-4 rounded-xl bg-black hover:bg-zinc-800 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer mt-2"
+                    >
+                      <Tag className="w-4 h-4 text-[#d4ff00]" />
+                      <span>{isSavingCoupon ? 'Criando Cupom...' : 'Criar Cupom de Desconto'}</span>
+                    </button>
+                  </form>
+                </div>
+
+                {/* RIGHT: Active Coupons List */}
+                <div className="lg:col-span-7 p-6 space-y-4 flex flex-col bg-zinc-50/40">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Cupons Cadastrados</span>
+                      <h4 className="text-base font-bold text-zinc-900 mt-0.5">
+                        Todos os Cupons ({coupons.length})
+                      </h4>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 overflow-y-auto pr-1 flex-1 max-h-[440px]">
+                    {coupons.length === 0 ? (
+                      <div className="p-8 text-center bg-white rounded-2xl border border-dashed border-zinc-200">
+                        <Tag className="w-8 h-8 text-zinc-300 mx-auto mb-2" />
+                        <p className="text-xs text-zinc-500 font-medium">Nenhum cupom cadastrado ainda.</p>
+                        <p className="text-[11px] text-zinc-400 mt-1">Crie seu primeiro cupom no formulário ao lado.</p>
+                      </div>
+                    ) : (
+                      coupons.map((c) => (
+                        <div
+                          key={c.id || c.code}
+                          className={`p-4 rounded-2xl bg-white border transition-all shadow-2xs ${
+                            c.active ? 'border-zinc-200' : 'border-zinc-200/60 opacity-60 bg-zinc-50'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="px-2.5 py-1 rounded-lg bg-zinc-900 text-white font-mono font-black text-xs tracking-wider">
+                                  {c.code}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full bg-[#d4ff00]/30 text-zinc-900 border border-[#d4ff00] text-[11px] font-black">
+                                  {c.discountPercent}% OFF
+                                </span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  c.active 
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                    : 'bg-zinc-100 text-zinc-500'
+                                }`}>
+                                  {c.active ? 'Ativo' : 'Inativo'}
+                                </span>
+                              </div>
+                              {c.description && (
+                                <p className="text-xs text-zinc-500 pt-0.5">{c.description}</p>
+                              )}
+                              <p className="text-[10px] text-zinc-400 font-mono">
+                                Criado em: {c.createdAt ? new Date(c.createdAt).toLocaleDateString('pt-BR') : 'Recente'}
+                              </p>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* Copy Code */}
+                              <button
+                                type="button"
+                                title="Copiar código"
+                                onClick={() => handleCopyCode(c.code)}
+                                className="p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-colors text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                              >
+                                {copiedCouponCode === c.code ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span className="text-[10px] text-emerald-700">Copiado</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span className="text-[10px]">Copiar</span>
+                                  </>
+                                )}
+                              </button>
+
+                              {/* Copy Checkout Link */}
+                              <button
+                                type="button"
+                                title="Copiar link direto com cupom aplicado"
+                                onClick={() => handleCopyLink(c.code)}
+                                className="p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-colors text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                              >
+                                {copiedCouponLink === c.code ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span className="text-[10px] text-emerald-700">Link OK</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    <span className="text-[10px]">Link</span>
+                                  </>
+                                )}
+                              </button>
+
+                              {/* Toggle active */}
+                              <button
+                                type="button"
+                                title={c.active ? 'Desativar cupom' : 'Ativar cupom'}
+                                onClick={() => handleToggleCouponActive(c)}
+                                className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold transition-colors cursor-pointer ${
+                                  c.active ? 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                }`}
+                              >
+                                {c.active ? 'Pausar' : 'Ativar'}
+                              </button>
+
+                              {/* Delete */}
+                              <button
+                                type="button"
+                                title="Excluir cupom"
+                                onClick={() => handleDeleteCoupon(c.id)}
+                                className="p-2 rounded-xl hover:bg-red-50 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <ConfirmationModal
         isOpen={transactionToDelete !== null}
         title="Excluir Transação"

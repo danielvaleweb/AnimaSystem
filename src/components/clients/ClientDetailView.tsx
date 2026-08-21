@@ -2,10 +2,11 @@ import {  useState, useEffect } from 'react';
 import {  
   ArrowLeft, Users, Database,
   FileText, MoreVertical, Edit2, Ban, Trash2, CheckCircle,
-  Rocket, Power, Code, Hand, Clock, Check, Sparkles, CreditCard, Phone
+  Rocket, Power, Code, Hand, Clock, Check, Sparkles, CreditCard, Phone,
+  Copy
 } from 'lucide-react';
 import {  ClientData } from '../../types';
-import {  cn } from '../../utils';
+import {  cn, formatClientRenewalDate, getClientDaysUntilRenewal, isClientRenewalAlert } from '../../utils';
 import {  db, auth, app } from '../../lib/firebase';
 import {  doc, onSnapshot, updateDoc, deleteDoc } from 'firebase/firestore';
 import {  ClientModal } from './ClientModal';
@@ -31,6 +32,7 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isTrialModalOpen, setIsTrialModalOpen] = useState(false);
   const [trialEndDate, setTrialEndDate] = useState('');
+  const [copiedGuardId, setCopiedGuardId] = useState(false);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -504,17 +506,20 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                   </span>
                 </div>
               </h2>
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2 text-[11px] sm:text-sm text-zinc-500">
-                {displayDomain && (
-                  <>
-                    <span className="truncate max-w-[120px] sm:max-w-none">{displayDomain}</span>
-                    {client.firebaseProjectId && client.firebaseProjectId !== 'N/A' && (
-                      <span className="w-1 h-1 rounded-full bg-zinc-700"></span>
-                    )}
-                  </>
-                )}
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2 text-[11px] sm:text-sm text-zinc-500 font-mono">
+                <span>
+                  <span className="font-sans text-zinc-400 mr-1">ID Guard:</span>
+                  <span className="text-zinc-600">{client.id}</span>
+                </span>
+
                 {client.firebaseProjectId && client.firebaseProjectId !== 'N/A' && (
-                  <span className="truncate max-w-[120px] sm:max-w-none">ID: {client.firebaseProjectId}</span>
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-zinc-300"></span>
+                    <span className="truncate max-w-[200px] sm:max-w-none">
+                      <span className="font-sans text-zinc-400 mr-1">ID Cloud:</span>
+                      <span className="text-zinc-600">{client.firebaseProjectId}</span>
+                    </span>
+                  </>
                 )}
               </div>
             </div>
@@ -523,9 +528,6 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
 
         {/* Header Actions Menu */}
         <div className="flex items-center gap-2">
-          
-
-
           {!isClientView && (
             <div className="relative">
               <button 
@@ -538,30 +540,30 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
               {showMenu && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
-                  <div className="absolute right-0 top-12 w-48 bg-white border border-zinc-300/50 rounded-xl shadow-xl z-20 py-1 overflow-hidden">
-                  <button 
-                    onClick={() => { setShowMenu(false); setIsEditing(true); }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer"
-                  >
-                    <Edit2 className="w-4 h-4 text-zinc-500" />
-                    Editar Cliente
-                  </button>
-                  
-                  <div className="h-px bg-zinc-800/50 my-1"></div>
-                  
-                  <button 
-                    onClick={() => { setShowMenu(false); setShowDeleteConfirm(true); }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Excluir
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+                  <div className="absolute right-0 top-12 w-52 bg-white border border-zinc-300/50 rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                    <button 
+                      onClick={() => { setShowMenu(false); setIsEditing(true); }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer"
+                    >
+                      <Edit2 className="w-4 h-4 text-zinc-500" />
+                      Editar Cliente
+                    </button>
+                    
+                    <div className="h-px bg-zinc-800/50 my-1"></div>
+                    
+                    <button 
+                      onClick={() => { setShowMenu(false); setShowDeleteConfirm(true); }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Excluir
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
-      </div>
+        </div>
       </div>
 
       {isEditing && (
@@ -669,6 +671,29 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                   <span className="text-zinc-800">
                     {client.dueDate ? `Todo dia ${client.dueDate}` : 'Não definido'}
                   </span>
+                </div>
+                <div>
+                  <span className="block text-sm text-zinc-500 mb-1">Próxima Renovação</span>
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      "font-mono font-semibold text-sm",
+                      isClientRenewalAlert(client) ? "text-rose-600 font-bold" : "text-zinc-800"
+                    )}>
+                      {formatClientRenewalDate(client)}
+                    </span>
+                    {isClientRenewalAlert(client) && (
+                      <span 
+                        className={cn(
+                          "inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold",
+                          getClientDaysUntilRenewal(client) <= 0 
+                            ? "bg-rose-100 text-rose-700 border border-rose-200" 
+                            : "bg-amber-100 text-amber-800 border border-amber-200"
+                        )}
+                      >
+                        {getClientDaysUntilRenewal(client) <= 0 ? "Vencido" : `${getClientDaysUntilRenewal(client)} dias restantes`}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

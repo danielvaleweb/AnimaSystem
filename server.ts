@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, collection, query, where, getDocs, getDoc, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import fs from "fs";
 import cors from "cors";
 import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
@@ -59,76 +59,709 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
-  // API Route to check client status by domain
+  // Helper to normalize domains
+  function cleanDomain(d: string): string {
+    return d.toLowerCase()
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .replace(/\/.*$/, '')
+      .trim();
+  }
+
+  // API Route to check client status by ID, domain or host
   app.get("/api/client-status", async (req, res) => {
     try {
-      const { domain } = req.query;
-      if (!domain || typeof domain !== "string") {
-        return res.status(400).json({ error: "O parâmetro 'domain' é obrigatório." });
-      }
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-      // Query clients by domain
+      const { domain, id, client, host } = req.query;
+      const targetId = (id || client) as string | undefined;
+      const targetDomain = (domain || host) as string | undefined;
+
       const clientsRef = collection(db, "clients");
-      const q = query(clientsRef, where("domain", "==", domain));
-      const snapshot = await getDocs(q);
+      let clientData: any = null;
+      let clientDocId: string = "";
 
-      if (snapshot.empty) {
-        return res.status(404).json({ error: "Cliente não encontrado.", active: false });
+      // 1. Try to find by Firestore Document ID directly (getDoc)
+      if (targetId && typeof targetId === "string" && targetId.trim() !== "") {
+        const cleanId = targetId.trim();
+        try {
+          const directSnap = await getDoc(doc(db, "clients", cleanId));
+          if (directSnap.exists()) {
+            clientDocId = directSnap.id;
+            clientData = directSnap.data();
+          }
+        } catch (e) {
+          console.warn("Direct getDoc failed for id:", cleanId, e);
+        }
       }
 
-      const clientDoc = snapshot.docs[0];
-      const clientData = clientDoc.data();
+      // 2. If not found by direct getDoc, search across all clients by ID or domain / website
+      if (!clientData) {
+        try {
+          const allClientsSnap = await getDocs(clientsRef);
+          const normalizedTargetDomain = targetDomain ? cleanDomain(targetDomain) : '';
+          const cleanTargetId = targetId ? targetId.trim().toLowerCase() : '';
+          
+          for (const docSnap of allClientsSnap.docs) {
+            const d = docSnap.data();
+            const curDocId = docSnap.id.toLowerCase();
+            const curInternalId = d.id ? String(d.id).toLowerCase() : '';
+            const docDomain = d.domain ? cleanDomain(d.domain) : '';
+            const docWebsite = d.website ? cleanDomain(d.website) : '';
+            
+            // Match ID
+            if (cleanTargetId && (curDocId === cleanTargetId || curInternalId === cleanTargetId)) {
+              clientData = d;
+              clientDocId = docSnap.id;
+              break;
+            }
 
-      // Check transactions for this client to see if they are overdue
-      // A full analysis would require checking if any transaction shows "overdue"
-      // or "pending" for a past date, but we'll approximate based on what we have.
-      const transactionsRef = collection(db, "transactions");
-      const trxQuery = query(transactionsRef, where("clientName", "==", clientData.name));
-      const trxSnapshot = await getDocs(trxQuery);
-      
-      let isOverdue = false;
+            // Match Domain / Host
+            if (normalizedTargetDomain && (
+              (docDomain && (docDomain === normalizedTargetDomain || normalizedTargetDomain.includes(docDomain) || docDomain.includes(normalizedTargetDomain))) ||
+              (docWebsite && (docWebsite === normalizedTargetDomain || normalizedTargetDomain.includes(docWebsite) || docWebsite.includes(normalizedTargetDomain)))
+            )) {
+              clientData = d;
+              clientDocId = docSnap.id;
+              break;
+            }
+          }
+        } catch (errSearch) {
+          console.error("Error searching all clients:", errSearch);
+        }
+      }
+
+      if (!clientData) {
+        return res.status(404).json({ 
+          error: "Cliente não encontrado.", 
+          suspended: false,
+          active: true 
+        });
+      }
+
+      const isSuspendedManual = clientData.status === 'suspended' || 
+                                clientData.status === 'ended' || 
+                                clientData.status === 'suspenso' || 
+                                clientData.status === 'blocked' || 
+                                clientData.suspended === true || 
+                                clientData.isSuspended === true;
+
+      // Calculate next renewal date
+      let renewalDate: Date;
+      if (clientData.nextRenewalDate && /^\d{4}-\d{2}-\d{2}/.test(clientData.nextRenewalDate)) {
+        const [y, m, d] = clientData.nextRenewalDate.split('-').map(Number);
+        renewalDate = new Date(y, m - 1, d);
+      } else {
+        const now = new Date();
+        const dueDay = Number(clientData.dueDate) || 10;
+        renewalDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
+        if (now.getDate() > dueDay) {
+          renewalDate.setMonth(renewalDate.getMonth() + 1);
+        }
+      }
+
       const today = new Date();
-      const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-      const todayDay = today.getDate();
+      today.setHours(0, 0, 0, 0);
+      const checkDate = new Date(renewalDate);
+      checkDate.setHours(0, 0, 0, 0);
+      const diffMs = checkDate.getTime() - today.getTime();
+      const daysUntilRenewal = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-      // Check specific transactions 
-      let foundOverdue = false;
-      let hasPaidThisMonth = false;
+      // Overdue & Tolerance logic:
+      // If overdue (daysUntilRenewal < 0), tolerance is 7 days.
+      // On the 8th day after due date (daysUntilRenewal <= -8), the site is automatically suspended.
+      const isOverdue = daysUntilRenewal < 0;
+      const overdueDays = isOverdue ? Math.abs(daysUntilRenewal) : 0;
+      const toleranceRemaining = Math.max(0, 8 - overdueDays);
+      const isAutoSuspended = daysUntilRenewal <= -8;
+      const isSuspended = isSuspendedManual || isAutoSuspended;
 
-      trxSnapshot.forEach(doc => {
-        const trx = doc.data();
-        if (trx.status === 'overdue') {
-          foundOverdue = true;
-        }
-        if (trx.date && trx.date.startsWith(currentMonthStr) && trx.status === 'paid') {
-            hasPaidThisMonth = true;
-        }
-      });
+      // Banner warning shows when 7 days before due date up to 7 days overdue (tolerance period)
+      const showRenewalWarning = !isSuspended && (daysUntilRenewal <= 7 && daysUntilRenewal >= -7);
+      const renewalDateFormatted = `${String(renewalDate.getDate()).padStart(2, '0')}/${String(renewalDate.getMonth() + 1).padStart(2, '0')}/${renewalDate.getFullYear()}`;
 
-      if (foundOverdue) {
-        isOverdue = true;
-      }
-
-      // Check the virtual overdue logic from the front-end
-      if (!hasPaidThisMonth && clientData.status === 'active' && clientData.monthlyValue) {
-        const dueDay = Number(clientData.dueDate) || 1;
-        if (dueDay < todayDay) {
-           isOverdue = true;
-        }
-      }
+      const rawPlan = (clientData.plan || 'profissional').toLowerCase();
+      const planSlug = rawPlan.includes('starter') ? 'starter' : rawPlan.includes('enterprise') ? 'enterprise' : 'pro';
 
       return res.json({
-        domain: clientData.domain,
-        clientName: clientData.name,
-        status: clientData.status, // "active", "inactive"
-        isOverdue,
-        message: isOverdue ? "Pagamento pendente/atrasado." : "Pagamento em dia."
+        id: clientDocId,
+        clientName: clientData.name || "Cliente AnimaSystem",
+        domain: clientData.domain || targetDomain || "",
+        status: isSuspended ? "suspended" : (clientData.status || "active"),
+        plan: clientData.plan || "Profissional",
+        planSlug: planSlug,
+        monthlyValue: clientData.monthlyValue || 149,
+        suspended: isSuspended,
+        isAutoSuspended: isAutoSuspended,
+        isOverdue: isOverdue,
+        overdueDays: overdueDays,
+        toleranceRemaining: toleranceRemaining,
+        showRenewalWarning: showRenewalWarning,
+        daysUntilRenewal: daysUntilRenewal,
+        nextRenewalDate: clientData.nextRenewalDate || `${renewalDate.getFullYear()}-${String(renewalDate.getMonth() + 1).padStart(2, '0')}-${String(renewalDate.getDate()).padStart(2, '0')}`,
+        nextRenewalDateFormatted: renewalDateFormatted,
+        phone: clientData.phone || clientData.companyPhone || "5524981000306",
+        supportPhone: "5524981000306",
+        message: isSuspended 
+          ? (isAutoSuspended ? "Site suspenso automaticamente por atraso superior a 7 dias." : "Site suspenso por pendência contratual.") 
+          : (showRenewalWarning ? (isOverdue ? `Seu plano venceu há ${overdueDays} dias. Evite suspensão do serviço!` : "Aviso de renovação de hospedagem ativo.") : "Site ativo e regular.")
       });
 
     } catch (error: any) {
-      console.error(error);
-      return res.status(500).json({ error: error.message });
+      console.error("Erro em /api/client-status:", error);
+      return res.status(500).json({ error: error.message, suspended: false });
     }
+  });
+
+  // Guard Script Serving Endpoint (/api/guard.js)
+  app.get("/api/guard.js", (req, res) => {
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+    const script = `
+(function() {
+  // AnimaSystem Guard v2.1 - Client Protection & License Enforcer
+  var currentScript = document.currentScript;
+  if (!currentScript) {
+    var scripts = document.getElementsByTagName('script');
+    for (var i = scripts.length - 1; i >= 0; i--) {
+      var s = scripts[i];
+      var src = s.src || s.getAttribute('src') || '';
+      if (src && src.indexOf('/api/guard.js') !== -1) {
+        currentScript = s;
+        break;
+      }
+    }
+  }
+
+  var scriptSrc = currentScript ? (currentScript.src || currentScript.getAttribute('src') || '') : '';
+  var scriptUrl = null;
+  try {
+    scriptUrl = new URL(scriptSrc, window.location.href);
+  } catch (e) {
+    try {
+      scriptUrl = new URL(scriptSrc);
+    } catch(e2) {
+      scriptUrl = new URL(window.location.href);
+    }
+  }
+
+  var clientId = (typeof window.__ANIMASYSTEM_CLIENT_ID__ !== 'undefined' ? window.__ANIMASYSTEM_CLIENT_ID__ : '') ||
+                 (typeof window.ANIMASYSTEM_CLIENT_ID !== 'undefined' ? window.ANIMASYSTEM_CLIENT_ID : '') ||
+                 (currentScript && currentScript.dataset && currentScript.dataset.client ? currentScript.dataset.client : '') ||
+                 (currentScript && currentScript.getAttribute && currentScript.getAttribute('data-client') ? currentScript.getAttribute('data-client') : '') ||
+                 ((scriptUrl && scriptUrl.searchParams) ? (scriptUrl.searchParams.get('client') || scriptUrl.searchParams.get('id') || '') : '');
+
+  var customDomain = (scriptUrl && scriptUrl.searchParams) ? (scriptUrl.searchParams.get('domain') || window.location.hostname) : window.location.hostname;
+  var apiBase = (scriptUrl && scriptUrl.origin && scriptUrl.origin !== 'null' && scriptUrl.origin.indexOf('http') === 0) 
+    ? scriptUrl.origin 
+    : (typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://ais-pre-p5xzmtslhtg7gruyoqvdo4-373656924597.us-west2.run.app');
+
+  function renderSuspensionScreen(data) {
+    if (document.getElementById('animasystem-guard-lock')) return;
+
+    var targetParent = document.body || document.documentElement;
+    if (!targetParent) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { renderSuspensionScreen(data); });
+      }
+      return;
+    }
+
+    // Apply global lock styles
+    if (!document.getElementById('animasystem-guard-styles')) {
+      var style = document.createElement('style');
+      style.id = 'animasystem-guard-styles';
+      style.innerHTML = \`
+        html, body {
+          overflow: hidden !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          background: #000000 !important;
+        }
+        #animasystem-guard-lock {
+          position: fixed !important;
+          inset: 0 !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          background: #050505 !important;
+          z-index: 2147483647 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          justify-content: center !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+          color: #ffffff !important;
+          padding: 24px !important;
+          box-sizing: border-box !important;
+          text-align: center !important;
+          user-select: none !important;
+          -webkit-font-smoothing: antialiased !important;
+          overflow: hidden !important;
+        }
+        .as-glow-1 {
+          position: absolute !important;
+          top: -10% !important;
+          left: -10% !important;
+          width: 800px !important;
+          height: 800px !important;
+          background: radial-gradient(circle, rgba(215, 254, 3, 0.05) 0%, rgba(34, 197, 94, 0.02) 50%, transparent 75%) !important;
+          border-radius: 50% !important;
+          filter: blur(90px) !important;
+          pointer-events: none !important;
+          animation: asOrbMove1 4.5s ease-in-out infinite alternate !important;
+        }
+        .as-glow-2 {
+          position: absolute !important;
+          bottom: -15% !important;
+          right: -10% !important;
+          width: 850px !important;
+          height: 850px !important;
+          background: radial-gradient(circle, rgba(215, 254, 3, 0.05) 0%, rgba(34, 197, 94, 0.02) 45%, transparent 75%) !important;
+          border-radius: 50% !important;
+          filter: blur(100px) !important;
+          pointer-events: none !important;
+          animation: asOrbMove2 5s ease-in-out infinite alternate !important;
+        }
+        @keyframes asOrbMove1 {
+          0% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(140px, -90px) scale(1.25); }
+          100% { transform: translate(-90px, 120px) scale(0.9); }
+        }
+        @keyframes asOrbMove2 {
+          0% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(-130px, 100px) scale(1.3); }
+          100% { transform: translate(100px, -80px) scale(0.88); }
+        }
+        .as-card {
+          position: relative !important;
+          z-index: 10 !important;
+          max-width: 520px !important;
+          width: 100% !important;
+          background: transparent !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          gap: 18px !important;
+          animation: asFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+        }
+        @keyframes asFadeIn {
+          from { opacity: 0; transform: scale(0.96) translateY(12px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .as-logo-container {
+          display: inline-flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          padding: 8px 18px !important;
+          background: rgba(255, 255, 255, 0.06) !important;
+          border-radius: 9999px !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          backdrop-filter: blur(12px) !important;
+          margin-bottom: 4px !important;
+        }
+        .as-lightning-badge {
+          width: 24px !important;
+          height: 24px !important;
+          background: #D7FE03 !important;
+          border-radius: 50% !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          box-shadow: 0 0 12px rgba(215, 254, 3, 0.5) !important;
+        }
+        .as-gears-cluster {
+          width: 106px !important;
+          height: 100px !important;
+          position: relative !important;
+          color: #D7FE03 !important;
+          filter: drop-shadow(0 0 22px rgba(215, 254, 3, 0.6)) !important;
+          margin: 6px 0 !important;
+        }
+        .as-gear-1 {
+          width: 62px !important;
+          height: 62px !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 6px !important;
+          transform-origin: center center !important;
+        }
+        .as-gear-2 {
+          width: 45px !important;
+          height: 45px !important;
+          position: absolute !important;
+          bottom: 6px !important;
+          right: 4px !important;
+          transform-origin: center center !important;
+        }
+        .as-gear-3 {
+          width: 37px !important;
+          height: 37px !important;
+          position: absolute !important;
+          bottom: 0 !important;
+          left: 18px !important;
+          transform-origin: center center !important;
+        }
+        .as-gear-spin-cw {
+          animation: asSpinCw 9s linear infinite !important;
+        }
+        .as-gear-spin-ccw {
+          animation: asSpinCcw 6.75s linear infinite !important;
+        }
+        .as-gear-spin-cw-fast {
+          animation: asSpinCw 5.4s linear infinite !important;
+        }
+        @keyframes asSpinCw {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes asSpinCcw {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(-360deg); }
+        }
+        .as-title {
+          font-size: 28px !important;
+          font-weight: 700 !important;
+          letter-spacing: -0.03em !important;
+          color: #ffffff !important;
+          margin: 0 !important;
+          line-height: 1.2 !important;
+        }
+        .as-subtitle {
+          font-size: 14px !important;
+          color: #a1a1aa !important;
+          line-height: 1.5 !important;
+          max-width: 440px !important;
+          margin: 0 auto !important;
+        }
+        .as-btn {
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 8px !important;
+          background: #D7FE03 !important;
+          color: #000000 !important;
+          font-weight: 700 !important;
+          font-size: 14px !important;
+          padding: 13px 32px !important;
+          border-radius: 9999px !important;
+          text-decoration: none !important;
+          border: none !important;
+          cursor: pointer !important;
+          transition: all 0.25s ease !important;
+          margin-top: 4px !important;
+          box-shadow: 0 4px 20px rgba(215, 254, 3, 0.35), 0 0 35px rgba(215, 254, 3, 0.2) !important;
+        }
+        .as-btn:hover {
+          background: #e5ff33 !important;
+          transform: translateY(-2px) scale(1.02) !important;
+          box-shadow: 0 6px 28px rgba(215, 254, 3, 0.55), 0 0 45px rgba(215, 254, 3, 0.4) !important;
+        }
+        .as-footer {
+          margin-top: 20px !important;
+          font-size: 11px !important;
+          color: #71717a !important;
+          letter-spacing: 0.05em !important;
+          text-transform: uppercase !important;
+        }
+      \`;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    var container = document.createElement('div');
+    container.id = 'animasystem-guard-lock';
+    
+    var clientName = data && data.clientName ? data.clientName : '';
+    var rawPhone = (data && data.phone ? data.phone : '5524981000306').replace(/\\D/g, '');
+    var encodedMsg = encodeURIComponent('Olá! Gostaria de falar com o suporte sobre meu site em manutenção.');
+    var whatsappUrl = 'https://wa.me/' + (rawPhone || '5524981000306') + '?text=' + encodedMsg;
+
+    container.innerHTML = \`
+      <!-- Animated Green Glows -->
+      <div class="as-glow-1"></div>
+      <div class="as-glow-2"></div>
+
+      <div class="as-card">
+        <!-- Logo AnimaSystem com Raio -->
+        <div class="as-logo-container">
+          <div class="as-lightning-badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+          </div>
+          <span style="font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: #ffffff;">
+            <span style="color: #a1a1aa; font-weight: 400;">Anima</span>System
+          </span>
+        </div>
+
+        <!-- Ícone de 3 Engrenagens Conectadas em Verde Neon #D7FE03 -->
+        <div class="as-gears-cluster">
+          <svg class="as-gear-1 as-gear-spin-cw" viewBox="0 0 100 100">
+            <path fill="currentColor" fill-rule="evenodd" d="M 86.00 50.00 A 36 36 0 0 1 85.87 53.01 L 97.41 57.51 A 48 48 0 0 1 94.81 67.20 L 82.57 65.33 A 36 36 0 0 1 81.18 68.00 A 36 36 0 0 1 79.56 70.55 L 87.30 80.21 A 48 48 0 0 1 80.21 87.30 L 70.55 79.56 A 36 36 0 0 1 68.00 81.18 A 36 36 0 0 1 65.33 82.57 L 67.20 94.81 A 48 48 0 0 1 57.51 97.41 L 53.01 85.87 A 36 36 0 0 1 50.00 86.00 A 36 36 0 0 1 46.99 85.87 L 42.49 97.41 A 48 48 0 0 1 32.80 94.81 L 34.67 82.57 A 36 36 0 0 1 32.00 81.18 A 36 36 0 0 1 29.45 79.56 L 19.79 87.30 A 48 48 0 0 1 12.70 80.21 L 20.44 70.55 A 36 36 0 0 1 18.82 68.00 A 36 36 0 0 1 17.43 65.33 L 5.19 67.20 A 48 48 0 0 1 2.59 57.51 L 14.13 53.01 A 36 36 0 0 1 14.00 50.00 A 36 36 0 0 1 14.13 46.99 L 2.59 42.49 A 48 48 0 0 1 5.19 32.80 L 17.43 34.67 A 36 36 0 0 1 18.82 32.00 A 36 36 0 0 1 20.44 29.45 L 12.70 19.79 A 48 48 0 0 1 19.79 12.70 L 29.45 20.44 A 36 36 0 0 1 32.00 18.82 A 36 36 0 0 1 34.67 17.43 L 32.80 5.19 A 48 48 0 0 1 42.49 2.59 L 46.99 14.13 A 36 36 0 0 1 50.00 14.00 A 36 36 0 0 1 53.01 14.13 L 57.51 2.59 A 48 48 0 0 1 67.20 5.19 L 65.33 17.43 A 36 36 0 0 1 68.00 18.82 A 36 36 0 0 1 70.55 20.44 L 80.21 12.70 A 48 48 0 0 1 87.30 19.79 L 79.56 29.45 A 36 36 0 0 1 81.18 32.00 A 36 36 0 0 1 82.57 34.67 L 94.81 32.80 A 48 48 0 0 1 97.41 42.49 L 85.87 46.99 A 36 36 0 0 1 86.00 50.00 Z M 50 29 A 21 21 0 1 0 50 71 A 21 21 0 1 0 50 29 Z" />
+          </svg>
+          <svg class="as-gear-2 as-gear-spin-ccw" viewBox="0 0 100 100">
+            <path fill="currentColor" fill-rule="evenodd" d="M 84.00 50.00 A 34 34 0 0 1 83.83 53.41 L 97.15 58.99 A 48 48 0 0 1 93.43 70.44 L 79.37 67.12 A 34 34 0 0 1 77.51 69.98 A 34 34 0 0 1 75.36 72.64 L 82.86 84.99 A 48 48 0 0 1 73.12 92.06 L 63.70 81.12 A 34 34 0 0 1 60.51 82.34 A 34 34 0 0 1 57.21 83.23 L 56.02 97.62 A 48 48 0 0 1 43.98 97.62 L 42.79 83.23 A 34 34 0 0 1 39.49 82.34 A 34 34 0 0 1 36.30 81.12 L 26.88 92.06 A 48 48 0 0 1 17.14 84.99 L 24.64 72.64 A 34 34 0 0 1 22.49 69.98 A 34 34 0 0 1 20.63 67.12 L 6.57 70.44 A 48 48 0 0 1 2.85 58.99 L 16.17 53.41 A 34 34 0 0 1 16.00 50.00 A 34 34 0 0 1 16.17 46.59 L 2.85 41.01 A 48 48 0 0 1 6.57 29.56 L 20.63 32.88 A 34 34 0 0 1 22.49 30.02 A 34 34 0 0 1 24.64 27.36 L 17.14 15.01 A 48 48 0 0 1 26.88 7.94 L 36.30 18.88 A 34 34 0 0 1 39.49 17.66 A 34 34 0 0 1 42.79 16.77 L 43.98 2.38 A 48 48 0 0 1 56.02 2.38 L 57.21 16.77 A 34 34 0 0 1 60.51 17.66 A 34 34 0 0 1 63.70 18.88 L 73.12 7.94 A 48 48 0 0 1 82.86 15.01 L 75.36 27.36 A 34 34 0 0 1 77.51 30.02 A 34 34 0 0 1 79.37 32.88 L 93.43 29.56 A 48 48 0 0 1 97.15 41.01 L 83.83 46.59 A 34 34 0 0 1 84.00 50.00 Z M 50 31 A 19 19 0 1 0 50 69 A 19 19 0 1 0 50 31 Z" />
+          </svg>
+          <svg class="as-gear-3 as-gear-spin-cw-fast" viewBox="0 0 100 100">
+            <path fill="currentColor" fill-rule="evenodd" d="M 82.00 50.00 A 32 32 0 0 1 81.75 54.01 L 96.67 61.21 A 48 48 0 0 1 90.93 75.08 L 75.28 69.61 A 32 32 0 0 1 72.63 72.63 A 32 32 0 0 1 69.61 75.28 L 75.08 90.93 A 48 48 0 0 1 61.21 96.67 L 54.01 81.75 A 32 32 0 0 1 50.00 82.00 A 32 32 0 0 1 45.99 81.75 L 38.79 96.67 A 48 48 0 0 1 24.92 90.93 L 30.39 75.28 A 32 32 0 0 1 27.37 72.63 A 32 32 0 0 1 24.72 69.61 L 9.07 75.08 A 48 48 0 0 1 3.33 61.21 L 18.25 54.01 A 32 32 0 0 1 18.00 50.00 A 32 32 0 0 1 18.25 45.99 L 3.33 38.79 A 48 48 0 0 1 9.07 24.92 L 24.72 30.39 A 32 32 0 0 1 27.37 27.37 A 32 32 0 0 1 30.39 24.72 L 24.92 9.07 A 48 48 0 0 1 38.79 3.33 L 45.99 18.25 A 32 32 0 0 1 50.00 18.00 A 32 32 0 0 1 54.01 18.25 L 61.21 3.33 A 48 48 0 0 1 75.08 9.07 L 69.61 24.72 A 32 32 0 0 1 72.63 27.37 A 32 32 0 0 1 75.28 30.39 L 90.93 24.92 A 48 48 0 0 1 96.67 38.79 L 81.75 45.99 A 32 32 0 0 1 82.00 50.00 Z M 50 33 A 17 17 0 1 0 50 67 A 17 17 0 1 0 50 33 Z" />
+          </svg>
+        </div>
+
+        <!-- Título em Branco -->
+        <h1 class="as-title">Site em Manutenção</h1>
+
+        <!-- Mensagem técnica elegante -->
+        <p class="as-subtitle">
+          Este site encontra-se temporariamente em manutenção preventiva para atualização de recursos e estabilidade dos serviços.
+        </p>
+
+        <!-- Botão Suporte WhatsApp em #D7FE03 -->
+        <a href="\` + whatsappUrl + \`" target="_blank" rel="noopener noreferrer" class="as-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+          </svg>
+          <span>Falar com o Suporte</span>
+        </a>
+
+        <!-- Rodapé Discreto -->
+        <div class="as-footer">
+          AnimaSystem • Sistemas personalizados para seu negócio!
+        </div>
+      </div>
+    \`;
+
+    targetParent.appendChild(container);
+    document.title = "Site em Manutenção - AnimaSystem";
+
+    // MutationObserver to protect against inspect-element removal
+    try {
+      var observer = new MutationObserver(function() {
+        if (!document.getElementById('animasystem-guard-lock')) {
+          var p = document.body || document.documentElement;
+          if (p) p.appendChild(container);
+        }
+      });
+      observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    } catch(e) {}
+  }
+
+  function renderRenewalBanner(data) {
+    if (document.getElementById('animasystem-renewal-banner')) return;
+
+    var bannerStyle = document.createElement('style');
+    bannerStyle.id = 'animasystem-renewal-styles';
+    bannerStyle.innerHTML = \`
+      #animasystem-renewal-banner {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        z-index: 2147483640 !important;
+        background: linear-gradient(90deg, #dc2626 0%, #b91c1c 100%) !important;
+        color: #ffffff !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        box-shadow: 0 4px 16px rgba(220, 38, 38, 0.45), 0 1px 3px rgba(0,0,0,0.2) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.25) !important;
+        box-sizing: border-box !important;
+        padding: 9px 16px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 12px !important;
+        animation: asBannerSlideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+      }
+      @keyframes asBannerSlideDown {
+        from { transform: translateY(-100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      .as-renew-content {
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        flex: 1 !important;
+        min-width: 0 !important;
+      }
+      .as-renew-icon {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 26px !important;
+        height: 26px !important;
+        background: rgba(255, 255, 255, 0.2) !important;
+        border-radius: 50% !important;
+        flex-shrink: 0 !important;
+      }
+      .as-renew-text {
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        color: #ffffff !important;
+        line-height: 1.35 !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
+      }
+      .as-renew-text strong {
+        font-weight: 800 !important;
+        color: #ffffff !important;
+      }
+      .as-renew-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 6px !important;
+        background: #ffffff !important;
+        color: #dc2626 !important;
+        font-weight: 800 !important;
+        font-size: 12.5px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.04em !important;
+        padding: 7px 18px !important;
+        border-radius: 9999px !important;
+        text-decoration: none !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+        white-space: nowrap !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        transition: all 0.2s ease !important;
+      }
+      .as-renew-btn:hover {
+        background: #fef08a !important;
+        color: #991b1b !important;
+        transform: scale(1.04) !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3) !important;
+      }
+      @media (max-width: 640px) {
+        #animasystem-renewal-banner {
+          flex-direction: column !important;
+          align-items: flex-start !important;
+          gap: 8px !important;
+          padding: 10px 12px !important;
+        }
+        .as-renew-btn {
+          width: 100% !important;
+          padding: 8px 14px !important;
+        }
+      }
+    \`;
+    document.head.appendChild(bannerStyle);
+
+    var days = (data && typeof data.daysUntilRenewal === 'number') ? data.daysUntilRenewal : 7;
+    var overdueDays = (data && typeof data.overdueDays === 'number') ? data.overdueDays : (days < 0 ? Math.abs(days) : 0);
+    var toleranceRemaining = (data && typeof data.toleranceRemaining === 'number') ? data.toleranceRemaining : Math.max(0, 8 - overdueDays);
+    var dateFormatted = (data && data.nextRenewalDateFormatted) ? data.nextRenewalDateFormatted : '';
+
+    var bannerText = '';
+    if (days < 0) {
+      // Overdue text: exactly as requested by user
+      var overdueLabel = overdueDays === 1 ? '1 dia' : overdueDays + ' dias';
+      var toleranceLabel = toleranceRemaining === 1 ? 'resta 1 dia' : 'restam ' + toleranceRemaining + ' dias';
+      bannerText = '<strong>Seu plano venceu há ' + overdueLabel + '.</strong> Evite a suspensão do seu serviço! (' + toleranceLabel + ' de tolerância antes da suspensão automática).';
+    } else if (days === 0) {
+      bannerText = '<strong>Aviso de Vencimento:</strong> Seu plano vence hoje' + (dateFormatted ? ' (' + dateFormatted + ')' : '') + '! Evite a suspensão do seu serviço.';
+    } else if (days === 1) {
+      bannerText = '<strong>Aviso de Vencimento de Hospedagem:</strong> Falta apenas 1 dia para o vencimento' + (dateFormatted ? ' (' + dateFormatted + ')' : '') + '. Mantenha seu site ativo sem interrupção.';
+    } else {
+      bannerText = '<strong>Aviso de Vencimento de Hospedagem:</strong> Faltam ' + days + ' dias para o vencimento' + (dateFormatted ? ' (' + dateFormatted + ')' : '') + '. Mantenha seu site e serviços ativos.';
+    }
+
+    var planSlug = (data && data.planSlug) ? data.planSlug : 'pro';
+    var targetClientParam = clientId || (data && data.id) || '';
+    var checkoutHref = apiBase + '/checkout?renov=true&client=' + encodeURIComponent(targetClientParam) + '&plan=' + encodeURIComponent(planSlug);
+
+    var banner = document.createElement('div');
+    banner.id = 'animasystem-renewal-banner';
+    banner.innerHTML = \`
+      <div class="as-renew-content">
+        <div class="as-renew-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </div>
+        <div class="as-renew-text">
+          \` + bannerText + \`
+        </div>
+      </div>
+      <a href="\` + checkoutHref + \`" target="_blank" rel="noopener noreferrer" class="as-renew-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+          <line x1="2" y1="10" x2="22" y2="10"></line>
+        </svg>
+        Renovar Agora
+      </a>
+    \`;
+
+    document.body.appendChild(banner);
+
+    // Dynamically adjust body padding so top content is not cut off
+    function adjustBodyPadding() {
+      var h = banner.offsetHeight || 44;
+      document.body.style.paddingTop = h + 'px';
+    }
+    adjustBodyPadding();
+    window.addEventListener('resize', adjustBodyPadding);
+  }
+
+  function removeExistingElements() {
+    var existingLock = document.getElementById('animasystem-guard-lock');
+    if (existingLock) existingLock.remove();
+    var existingBanner = document.getElementById('animasystem-renewal-banner');
+    if (existingBanner) existingBanner.remove();
+    document.body.style.paddingTop = '';
+  }
+
+  function checkStatus() {
+    var checkUrl = apiBase + '/api/client-status?id=' + encodeURIComponent(clientId) + '&domain=' + encodeURIComponent(customDomain) + '&host=' + encodeURIComponent(window.location.hostname);
+    
+    fetch(checkUrl, { method: 'GET', mode: 'cors' })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data && (data.suspended === true || data.status === 'suspended' || data.status === 'ended')) {
+          var banner = document.getElementById('animasystem-renewal-banner');
+          if (banner) banner.remove();
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+              renderSuspensionScreen(data);
+            });
+          } else {
+            renderSuspensionScreen(data);
+          }
+        } else if (data && data.showRenewalWarning === true) {
+          var lock = document.getElementById('animasystem-guard-lock');
+          if (lock) lock.remove();
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+              renderRenewalBanner(data);
+            });
+          } else {
+            renderRenewalBanner(data);
+          }
+        } else {
+          // Client is completely active and not in warning range
+          removeExistingElements();
+        }
+      })
+      .catch(function(err) {
+        console.warn('[AnimaSystem Guard] License check completed.');
+      });
+  }
+
+  // Execute check immediately
+  checkStatus();
+
+  // Periodic polling every 30 seconds for immediate live unlock upon payment
+  setInterval(checkStatus, 30000);
+})();
+    `;
+
+    return res.send(script);
   });
 
   // Mercado Pago Create Payment
@@ -171,7 +804,7 @@ async function startServer() {
   // Asaas Create Checkout & Customer API
   app.post("/api/asaas/create-checkout", async (req, res) => {
     try {
-      const { planId, items, coupon, customer, ownerId, userId } = req.body;
+      const { planId, items, coupon, customer, ownerId, userId, isRenewal, clientId, renewalMonths } = req.body;
 
       if (!customer || !customer.name || !customer.cpf) {
         return res.status(400).json({ error: "Dados do cliente incompletos (nome e CPF são obrigatórios)." });
@@ -403,8 +1036,11 @@ async function startServer() {
       const orderDoc = {
         orderId,
         userId: userId || null,
-        productId: planId || "profissional",
+        productId: isRenewal ? "renovacao" : (planId || "profissional"),
         planId: planId || "profissional",
+        isRenewal: !!isRenewal,
+        clientId: clientId || null,
+        renewalMonths: Number(renewalMonths || 1),
         items: resolvedItems,
         customerName,
         customerEmail: cleanEmail,
@@ -497,7 +1133,20 @@ async function startServer() {
 
       // 2. Create or Update Client in 'clients' collection
       let existingClientId: string | null = null;
-      if (orderData.customerCpf) {
+      let existingClientData: any = null;
+
+      // Check if direct clientId was provided
+      if (orderData.clientId) {
+        try {
+          const directSnap = await getDoc(doc(db, "clients", orderData.clientId));
+          if (directSnap.exists()) {
+            existingClientId = directSnap.id;
+            existingClientData = directSnap.data();
+          }
+        } catch (e) {}
+      }
+
+      if (!existingClientId && orderData.customerCpf) {
         const clientQ = query(
           collection(db, "clients"),
           where("cpf", "==", orderData.customerCpf)
@@ -505,18 +1154,42 @@ async function startServer() {
         const clientSnap = await getDocs(clientQ);
         if (!clientSnap.empty) {
           existingClientId = clientSnap.docs[0].id;
-          await updateDoc(doc(db, "clients", existingClientId), {
-            status: "active",
-            plan: planName,
-            monthlyValue: amount,
-            updatedAt: new Date().toISOString()
-          });
-          console.log(`[Asaas] Updated existing client ${existingClientId} to active`);
+          existingClientData = clientSnap.docs[0].data();
         }
       }
 
-      if (!existingClientId) {
+      const renewalMonths = Number(orderData.renewalMonths || 1);
+      const isRenewal = orderData.isRenewal === true || (orderData.productId && orderData.productId.includes('renov'));
+
+      if (existingClientId) {
+        // Calculate new renewal date
+        let baseDate = new Date();
+        if (existingClientData?.nextRenewalDate && /^\d{4}-\d{2}-\d{2}/.test(existingClientData.nextRenewalDate)) {
+          const [y, m, d] = existingClientData.nextRenewalDate.split('-').map(Number);
+          const parsed = new Date(y, m - 1, d);
+          if (parsed > baseDate) {
+            baseDate = parsed;
+          }
+        }
+        baseDate.setMonth(baseDate.getMonth() + (isRenewal ? renewalMonths : 1));
+        const newRenewalDateStr = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
+
+        await updateDoc(doc(db, "clients", existingClientId), {
+          status: "active",
+          plan: planName,
+          monthlyValue: amount,
+          nextRenewalDate: newRenewalDateStr,
+          lastRenewalPaidAt: new Date().toISOString(),
+          renewalMonthsPaid: (existingClientData?.renewalMonthsPaid || 0) + (isRenewal ? renewalMonths : 1),
+          updatedAt: new Date().toISOString()
+        });
+        console.log(`[Asaas] Updated existing client ${existingClientId} - Renewal extended to ${newRenewalDateStr} (+${renewalMonths} months)`);
+      } else {
         const cleanDomain = clientName.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const baseDate = new Date();
+        baseDate.setMonth(baseDate.getMonth() + renewalMonths);
+        const newRenewalDateStr = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
+
         const newClientRef = await addDoc(collection(db, "clients"), {
           name: clientName,
           responsible: clientName,
@@ -527,6 +1200,9 @@ async function startServer() {
           monthlyValue: amount,
           dueDate: 10,
           status: "active",
+          nextRenewalDate: newRenewalDateStr,
+          lastRenewalPaidAt: new Date().toISOString(),
+          renewalMonthsPaid: renewalMonths,
           cpf: orderData.customerCpf || "",
           phone: orderData.customerPhone || "",
           email: orderData.customerEmail || "",
@@ -535,7 +1211,7 @@ async function startServer() {
           createdAt: new Date().toISOString()
         });
         existingClientId = newClientRef.id;
-        console.log(`[Asaas] Created new active client ${existingClientId}`);
+        console.log(`[Asaas] Created new active client ${existingClientId} with nextRenewalDate: ${newRenewalDateStr}`);
       }
 
       // 3. Update Leads collection to converted

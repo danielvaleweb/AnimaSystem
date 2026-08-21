@@ -139,6 +139,9 @@ export interface ClientData {
   companyEmail?: string;
   companyAddress?: string;
   companyInscricaoEstadual?: string;
+  nextRenewalDate?: string; // YYYY-MM-DD
+  lastRenewalPaidAt?: string;
+  renewalMonthsPaid?: number;
   monitorCollections?: { id: string; label: string; collectionPath: string; readWeight: number; writeWeight: number }[];
   lastMetricsUpdate?: string;
   lastGcpMetrics?: any;
@@ -148,4 +151,17 @@ export interface ClientData {
   gcpBillingPeriod?: string;
   gcpBillingLastSync?: string;
   createdAt?: string;
+}
+
+export interface CouponData {
+  id?: string;
+  code: string;
+  discountPercent: number;
+  description?: string;
+  active: boolean;
+  maxUses?: number;
+  usedCount: number;
+  ownerId?: string;
+  createdAt?: string;
+  expiresAt?: string;
 }

@@ -32,6 +32,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Coupons collection (created in finance, read and validated during checkout)
+    match /coupons/{couponId} {
+      allow read, write: if true;
+    }
+
     // All other collections allow authenticated or fallback
     match /{document=**} {
       allow read, write: if true;

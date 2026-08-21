@@ -6,7 +6,7 @@ import {
   Tag, ChevronLeft, ChevronRight, Info, Plus, Sparkles, Headphones, Server, Zap, X, ArrowRight, Lock, Phone, Mail, ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 
 interface CartItem {
@@ -36,33 +36,36 @@ export default function CheckoutView() {
   const searchParams = new URLSearchParams(location.search);
   const planParam = (searchParams.get('plan') || 'profissional').toLowerCase();
   const supportParam = searchParams.get('support') === 'true';
+  const isRenewal = searchParams.get('renov') === 'true' || searchParams.has('renov') || searchParams.get('type') === 'renewal';
+  const clientIdParam = searchParams.get('client') || searchParams.get('clientId') || '';
+  const initialMonths = Math.max(1, parseInt(searchParams.get('months') || '1', 10));
 
   // Base plan details
   const planDetails: Record<string, { name: string; desc: string; price: number; originalPrice: number; image: string }> = {
     starter: {
-      name: 'Plano Starter',
-      desc: 'Sistema pronto para uso ágil, cadastro de clientes e painel responsivo',
+      name: isRenewal ? 'Renovação - Plano Starter' : 'Plano Starter',
+      desc: isRenewal ? 'Renovação de hospedagem, banco de dados e manutenção contínua' : 'Sistema pronto para uso ágil, cadastro de clientes e painel responsivo',
       price: 60,
       originalPrice: 75,
       image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=300&auto=format&fit=crop&q=80',
     },
     profissional: {
-      name: 'Plano Profissional',
-      desc: 'Site de alta conversão sob medida, SEO otimizado e integração WhatsApp/CRM',
+      name: isRenewal ? 'Renovação - Plano Pro' : 'Plano Profissional',
+      desc: isRenewal ? 'Renovação de hospedagem cloud, certificado SSL e suporte contínuo' : 'Site de alta conversão sob medida, SEO otimizado e integração WhatsApp/CRM',
       price: 149,
       originalPrice: 189,
       image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=300&auto=format&fit=crop&q=80',
     },
     pro: {
-      name: 'Plano Profissional',
-      desc: 'Site de alta conversão sob medida, SEO otimizado e integração WhatsApp/CRM',
+      name: isRenewal ? 'Renovação - Plano Pro' : 'Plano Profissional',
+      desc: isRenewal ? 'Renovação de hospedagem cloud, certificado SSL e suporte contínuo' : 'Site de alta conversão sob medida, SEO otimizado e integração WhatsApp/CRM',
       price: 149,
       originalPrice: 189,
       image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=300&auto=format&fit=crop&q=80',
     },
     enterprise: {
-      name: 'Plano Enterprise',
-      desc: 'Software e apps sob medida, infraestrutura dedicada e suporte VIP 24/7 incluso',
+      name: isRenewal ? 'Renovação - Plano Enterprise' : 'Plano Enterprise',
+      desc: isRenewal ? 'Renovação de infraestrutura dedicada, banco de dados e suporte VIP' : 'Software e apps sob medida, infraestrutura dedicada e suporte VIP 24/7 incluso',
       price: 499,
       originalPrice: 599,
       image: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=300&auto=format&fit=crop&q=80',
@@ -81,12 +84,12 @@ export default function CheckoutView() {
         price: selectedPlan.price,
         originalPrice: selectedPlan.originalPrice,
         image: selectedPlan.image,
-        quantity: 1,
+        quantity: initialMonths,
         isService: false,
       }
     ];
 
-    if (supportParam && planParam !== 'enterprise') {
+    if (!isRenewal && supportParam && planParam !== 'enterprise') {
       items.push({
         id: 'suporte-24h',
         name: 'Suporte Técnico 24 Horas VIP',
@@ -137,6 +140,7 @@ export default function CheckoutView() {
   const [couponInput, setCouponInput] = useState('');
   const [discountPercent, setDiscountPercent] = useState(0);
   const [couponFeedback, setCouponFeedback] = useState<string | null>(null);
+  const [clientInfo, setClientInfo] = useState<any>(null);
 
   // Modal & Lead registration state
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -205,19 +209,66 @@ export default function CheckoutView() {
     }));
   };
 
-  const handleApplyCoupon = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (couponInput.toUpperCase() === 'ANIMA10' || couponInput.toUpperCase() === 'DESCONTO10') {
+  // Helper to validate and apply coupon from Firestore or hardcoded fallbacks
+  const validateAndApplyCoupon = async (codeToVerify: string) => {
+    const code = codeToVerify.toUpperCase().trim();
+    if (!code) {
+      setDiscountPercent(0);
+      setCouponFeedback(null);
+      return;
+    }
+
+    try {
+      const q = query(
+        collection(db, 'coupons'),
+        where('code', '==', code)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const cDoc = snap.docs[0].data();
+        if (cDoc.active === false) {
+          setDiscountPercent(0);
+          setCouponFeedback('Este cupom está inativo ou expirado.');
+          return;
+        }
+        const pct = Number(cDoc.discountPercent) || 0;
+        setDiscountPercent(pct);
+        setCouponFeedback(`Cupom ${cDoc.code} (${pct}% OFF) aplicado com sucesso!`);
+        return;
+      }
+    } catch (err) {
+      console.warn('Erro ao consultar cupom no banco:', err);
+    }
+
+    // Built-in fallback promotional vouchers
+    if (code === 'ANIMA10' || code === 'DESCONTO10') {
       setDiscountPercent(10);
       setCouponFeedback('Cupom de 10% aplicado com sucesso!');
-    } else if (couponInput.toUpperCase() === 'VIP') {
+    } else if (code === 'VIP' || code === 'RENOVAVIP') {
       setDiscountPercent(15);
       setCouponFeedback('Cupom de 15% VIP aplicado!');
-    } else if (couponInput.trim()) {
+    } else if (code === 'ANIMA20' || code === 'PROMO20') {
+      setDiscountPercent(20);
+      setCouponFeedback('Cupom de 20% OFF aplicado!');
+    } else {
       setDiscountPercent(0);
-      setCouponFeedback('Cupom inválido ou expirado.');
+      setCouponFeedback('Cupom inválido ou não encontrado.');
     }
   };
+
+  const handleApplyCoupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    validateAndApplyCoupon(couponInput);
+  };
+
+  // Check URL search parameters on mount (e.g. ?coupon=PROMO20)
+  React.useEffect(() => {
+    const urlCoupon = searchParams.get('coupon') || searchParams.get('cupom');
+    if (urlCoupon) {
+      setCouponInput(urlCoupon);
+      validateAndApplyCoupon(urlCoupon);
+    }
+  }, []);
 
   // Pricing calculations
   const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -266,6 +317,44 @@ export default function CheckoutView() {
     setTimeout(() => setCopied(false), 3000);
   };
 
+  // Prefill client info if clientIdParam is present
+  React.useEffect(() => {
+    if (!clientIdParam) return;
+    let isMounted = true;
+    async function loadClientData() {
+      try {
+        const clientSnap = await getDoc(doc(db, 'clients', clientIdParam));
+        if (clientSnap.exists() && isMounted) {
+          const d = clientSnap.data();
+          setClientInfo({ id: clientSnap.id, ...d });
+          if (d.responsible || d.name) setLeadName(d.responsible || d.name);
+          if (d.phone) setLeadPhone(d.phone);
+          if (d.cpf) setLeadCpf(d.cpf);
+          if (d.email || d.companyEmail) setLeadEmail(d.email || d.companyEmail);
+
+          const clientVal = (d.monthlyValue && Number(d.monthlyValue) > 0) ? Number(d.monthlyValue) : null;
+          
+          setCartItems(prev => prev.map(item => {
+            if (!item.isService) {
+              return { 
+                ...item, 
+                name: isRenewal ? `Renovação de Hospedagem - ${d.name || 'Site'}` : item.name,
+                image: d.logoUrl || item.image,
+                price: clientVal !== null ? clientVal : item.price, 
+                originalPrice: clientVal !== null ? Math.round(clientVal * 1.25) : item.originalPrice 
+              };
+            }
+            return item;
+          }));
+        }
+      } catch (err) {
+        console.warn('Could not prefill client data:', err);
+      }
+    }
+    loadClientData();
+    return () => { isMounted = false; };
+  }, [clientIdParam, isRenewal]);
+
   // Handler when user clicks "Finalizar a Compra" on the page
   const handleOpenCheckoutModal = () => {
     setLeadError('');
@@ -303,6 +392,8 @@ export default function CheckoutView() {
     setIsSubmittingLead(true);
     try {
       const cleanEmail = leadEmail.trim() || `cliente_${cleanCpf}@animasystem.com.br`;
+      const mainItem = cartItems.find(item => !item.isService);
+      const renewalMonths = mainItem ? mainItem.quantity : 1;
 
       const response = await fetch('/api/asaas/create-checkout', {
         method: 'POST',
@@ -311,6 +402,9 @@ export default function CheckoutView() {
         },
         body: JSON.stringify({
           planId: planParam,
+          isRenewal: isRenewal,
+          clientId: clientIdParam || undefined,
+          renewalMonths: renewalMonths,
           items: cartItems.map(item => ({
             id: item.id,
             quantity: item.quantity
@@ -391,12 +485,68 @@ export default function CheckoutView() {
       <main className="max-w-7xl mx-auto px-4 sm:px-8 xl:px-14 pt-8">
         
         {/* Title Area */}
-        <div className="flex items-center gap-3 mb-8">
+        <div className="flex items-center gap-3 mb-6">
           <ShoppingCart className="w-8 h-8 text-black" strokeWidth={2} />
           <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 tracking-tight">
-            Meu carrinho <span className="text-[#0c0d0e] font-black">({cartItems.length})</span>
+            {isRenewal ? 'Renovação de Hospedagem' : 'Meu carrinho'} <span className="text-[#0c0d0e] font-black">({cartItems.length})</span>
           </h1>
         </div>
+
+        {/* Client Identification & Branding Card */}
+        {clientInfo && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 p-4 sm:p-6 rounded-3xl bg-white border border-zinc-200/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 relative overflow-hidden"
+          >
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              {clientInfo.logoUrl ? (
+                <div className="w-16 h-16 rounded-2xl overflow-hidden bg-zinc-50 border border-zinc-200/80 shrink-0 p-1.5 flex items-center justify-center shadow-xs">
+                  <img 
+                    src={clientInfo.logoUrl} 
+                    alt={clientInfo.name} 
+                    className="w-full h-full object-contain" 
+                  />
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-2xl bg-[#0c0d0e] text-[#D7FE03] font-black text-lg flex items-center justify-center shrink-0 shadow-xs uppercase tracking-tight">
+                  {clientInfo.logoInitials || (clientInfo.name ? clientInfo.name.substring(0, 2) : 'AS')}
+                </div>
+              )}
+
+              <div className="space-y-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/80">
+                    Ambiente Seguro de Renovação
+                  </span>
+                  {clientInfo.domain && (
+                    <span className="text-[11px] font-semibold text-zinc-500 inline-flex items-center gap-1">
+                      <Globe className="w-3.5 h-3.5 text-zinc-400" />
+                      {clientInfo.domain}
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-lg sm:text-xl font-extrabold text-zinc-900 leading-snug truncate">
+                  {clientInfo.name}
+                </h2>
+                <p className="text-xs text-zinc-500">
+                  {clientInfo.responsible ? `Responsável: ${clientInfo.responsible} • ` : ''}
+                  Plano Contratado: <strong className="text-zinc-800 font-bold">{clientInfo.plan || 'Profissional'}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex sm:flex-col items-center sm:items-end gap-2 bg-zinc-50 sm:bg-transparent p-3 sm:p-0 rounded-2xl border sm:border-0 border-zinc-100 w-full sm:w-auto justify-between shrink-0">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold shadow-2xs">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>Identidade Verificada</span>
+              </div>
+              <span className="text-[10px] text-zinc-400 font-medium text-right hidden sm:block">
+                Liberação e renovação instantânea
+              </span>
+            </div>
+          </motion.div>
+        )}
 
         {/* 2-Column Checkout Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -429,18 +579,17 @@ export default function CheckoutView() {
                   >
                     {/* Thumbnail + Info */}
                     <div className="flex items-center gap-4 flex-1">
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-zinc-100 border border-zinc-200 shrink-0 flex items-center justify-center relative">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-zinc-100 border border-zinc-200 shrink-0 flex items-center justify-center relative p-1">
                         <img 
                           src={item.image} 
                           alt={item.name} 
-                          className="w-full h-full object-cover"
+                          className={`w-full h-full ${clientInfo?.logoUrl && item.image === clientInfo.logoUrl ? 'object-contain' : 'object-cover rounded-xl'}`}
                           onError={(e) => {
                             (e.target as HTMLElement).style.display = 'none';
                           }}
                         />
-                        <div className="absolute inset-0 bg-black/10" />
                         <div className="absolute top-1.5 left-1.5 w-6 h-6 rounded-md bg-[#D7FE03] text-black font-black text-[10px] flex items-center justify-center shadow-xs">
-                          AS
+                          {clientInfo?.logoInitials || 'AS'}
                         </div>
                       </div>
 
@@ -452,8 +601,12 @@ export default function CheckoutView() {
                           {item.desc}
                         </p>
                         <div className="flex items-center gap-2 pt-1">
-                          <span className="text-[10px] bg-zinc-100 text-zinc-700 font-semibold px-2 py-0.5 rounded-full border border-zinc-200">
-                            Ativação Imediata
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                            isRenewal 
+                              ? 'bg-amber-50 text-amber-800 border-amber-200' 
+                              : 'bg-zinc-100 text-zinc-700 border-zinc-200'
+                          }`}>
+                            {isRenewal ? 'Renovação de Hospedagem' : 'Ativação Imediata'}
                           </span>
                         </div>
                       </div>
@@ -692,7 +845,7 @@ export default function CheckoutView() {
                   onClick={handleOpenCheckoutModal}
                   className="w-full py-4 rounded-2xl bg-[#D7FE03] hover:bg-[#c2e502] disabled:opacity-50 text-black font-extrabold text-sm uppercase tracking-wider transition-all duration-200 shadow-md hover:shadow-lg hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <Check className="w-5 h-5 text-black stroke-[3]" /> Finalizar a Compra
+                  <Check className="w-5 h-5 text-black stroke-[3]" /> {isRenewal ? 'Finalizar Renovação' : 'Finalizar a Compra'}
                 </button>
 
                 <div className="text-center">
