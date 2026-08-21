@@ -142,6 +142,10 @@ export interface ClientData {
   nextRenewalDate?: string; // YYYY-MM-DD
   lastRenewalPaidAt?: string;
   renewalMonthsPaid?: number;
+  domainContractDate?: string; // YYYY-MM-DD
+  domainDurationYears?: number; // 1, 2, 3, 5
+  domainPrice?: number; // 40, 80, 120, 200
+  domainExpirationDate?: string; // YYYY-MM-DD
   monitorCollections?: { id: string; label: string; collectionPath: string; readWeight: number; writeWeight: number }[];
   lastMetricsUpdate?: string;
   lastGcpMetrics?: any;

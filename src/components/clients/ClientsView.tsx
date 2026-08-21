@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, Filter, Plus, MoreVertical, Edit2, Ban, Trash2, CheckCircle2, LayoutGrid, List, Rocket, Hand, Power, Code, Clock, ChevronDown, FileText, X, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ClientData } from '../../types';
-import { cn, formatClientRenewalDate, getClientDaysUntilRenewal, isClientRenewalAlert, getClientRenewalInfo } from '../../utils';
+import { cn, formatClientRenewalDate, getClientDaysUntilRenewal, isClientRenewalAlert, getClientRenewalInfo, getClientDomainInfo } from '../../utils';
 import { ClientModal } from './ClientModal';
 import { ClientGuardModal } from './ClientGuardModal';
 import { ConfirmationModal } from '../ConfirmationModal';
@@ -620,6 +620,36 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                               {renewInfo.daysUntilDue === 0 ? "Hoje" : `Falta ${renewInfo.daysUntilDue}d`}
                             </span>
                           ) : null}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-zinc-500 text-xs">Validade do domínio</span>
+                    {(() => {
+                      const domInfo = getClientDomainInfo(client);
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <span className={cn(
+                            "font-medium text-xs font-mono",
+                            domInfo.isExpired 
+                              ? "text-rose-600 font-bold" 
+                              : domInfo.isExpiringSoon 
+                              ? "text-amber-600 font-semibold" 
+                              : "text-zinc-800"
+                          )}>
+                            {domInfo.formattedDate}
+                          </span>
+                          <span className={cn(
+                            "inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold",
+                            domInfo.isExpired 
+                              ? "bg-rose-100 text-rose-700 border border-rose-200" 
+                              : domInfo.isExpiringSoon 
+                              ? "bg-amber-100 text-amber-800 border border-amber-200" 
+                              : "bg-zinc-100 text-zinc-600 border border-zinc-200"
+                          )}>
+                            {domInfo.statusText}
+                          </span>
                         </div>
                       );
                     })()}

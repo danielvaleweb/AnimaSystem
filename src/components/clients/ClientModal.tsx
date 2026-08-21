@@ -10,6 +10,7 @@ import { ref, uploadBytesResumable, getDownloadURL, getStorage, deleteObject } f
 import { app, db } from '../../lib/firebase';
 import { ConfirmationModal } from '../ConfirmationModal';
 import { motion, AnimatePresence } from 'motion/react';
+import { DOMAIN_YEAR_OPTIONS, DOMAIN_YEAR_PRICES, getClientDomainInfo } from '../../utils';
 
 interface ClientModalProps {
   client: ClientData | null;
@@ -23,6 +24,7 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
     responsible: '',
     logoInitials: '',
     domain: '',
+    website: '',
     projectName: '',
     plan: 'Starter',
     firebaseProjectId: '',
@@ -30,7 +32,10 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
     firebaseSdkConfig: '',
     monthlyValue: 290,
     dueDate: 5,
-    status: 'active'
+    status: 'active',
+    domainContractDate: new Date().toISOString().split('T')[0],
+    domainDurationYears: 1,
+    domainPrice: 40,
   });
   const [uploading, setUploading] = useState(false);
   const [showRemoveLogoConfirm, setShowRemoveLogoConfirm] = useState(false);
@@ -262,7 +267,16 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
   }, []);
 
   useEffect(() => {
-    if (client) setFormData(client);
+    if (client) {
+      const years = Number(client.domainDurationYears) || 1;
+      const contractDate = client.domainContractDate || client.hireDate || (client.createdAt ? client.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]);
+      setFormData({
+        ...client,
+        domainDurationYears: years,
+        domainContractDate: contractDate,
+        domainPrice: client.domainPrice !== undefined ? client.domainPrice : (DOMAIN_YEAR_PRICES[years] ?? 40),
+      });
+    }
   }, [client]);
 
   useEffect(() => {
@@ -296,6 +310,18 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
     // Cast number fields properly
     formData.monthlyValue = Number(formData.monthlyValue) || 0;
     formData.dueDate = Number(formData.dueDate) || 1;
+
+    // Calculate domain expiration & price
+    const years = Number(formData.domainDurationYears) || 1;
+    const baseContractDate = formData.domainContractDate || formData.hireDate || new Date().toISOString().split('T')[0];
+    const [cy, cm, cd] = baseContractDate.split('-').map(Number);
+    const expDate = new Date(cy + years, cm - 1, cd);
+    const expDateStr = `${expDate.getFullYear()}-${String(expDate.getMonth() + 1).padStart(2, '0')}-${String(expDate.getDate()).padStart(2, '0')}`;
+    
+    formData.domainContractDate = baseContractDate;
+    formData.domainDurationYears = years;
+    formData.domainPrice = DOMAIN_YEAR_PRICES[years] || 40;
+    formData.domainExpirationDate = expDateStr;
 
     // Generate initials if not provided
     if (!formData.logoInitials) {
@@ -517,29 +543,146 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
                       placeholder="00.000.000/0000-00"
                     />
                   </div>
+
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-zinc-700">Domínio (sem https://)</label>
+                    <label className="text-sm font-semibold text-zinc-700 flex items-center justify-between">
+                      <span>Domínio / Site da Empresa (sem https://)</span>
+                      <Globe className="w-4 h-4 text-zinc-400" />
+                    </label>
                     <input 
                       name="domain"
-                      value={formData.domain || ''}
-                      onChange={handleChange}
-                      className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 outline-none focus:border-accent text-zinc-900 text-sm transition-all shadow-2xs"
-                      placeholder="tudonovojf.com.br"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-zinc-700">Site da Empresa</label>
-                    <input 
-                      name="website"
-                      value={formData.website || formData.domain || ''}
-                      onChange={(e) => { 
-                         handleChange(e); 
-                         setFormData(prev => ({ ...prev, domain: e.target.value }));
+                      value={formData.domain || formData.website || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, domain: val, website: val }));
                       }}
-                      className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 outline-none focus:border-accent text-zinc-900 text-sm transition-all shadow-2xs"
+                      className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 outline-none focus:border-accent text-zinc-900 text-sm transition-all shadow-2xs font-mono"
                       placeholder="tudonovojf.com.br"
                     />
                   </div>
+
+                  {/* Bloco de Validade e Contratação do Domínio */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-zinc-700 flex items-center justify-between">
+                      <span>Validade & Registro do Domínio</span>
+                      <Calendar className="w-4 h-4 text-zinc-400" />
+                    </label>
+                    
+                    <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[11px] font-medium text-zinc-500 block mb-1">Data da Contratação</label>
+                          <input 
+                            type="date"
+                            name="domainContractDate"
+                            value={formData.domainContractDate || formData.hireDate || ''}
+                            onChange={(e) => {
+                              const contractDate = e.target.value;
+                              const years = Number(formData.domainDurationYears) || 1;
+                              let expDateStr = '';
+                              if (contractDate) {
+                                const [cy, cm, cd] = contractDate.split('-').map(Number);
+                                const expDate = new Date(cy + years, cm - 1, cd);
+                                expDateStr = `${expDate.getFullYear()}-${String(expDate.getMonth() + 1).padStart(2, '0')}-${String(expDate.getDate()).padStart(2, '0')}`;
+                              }
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                domainContractDate: contractDate,
+                                domainExpirationDate: expDateStr
+                              }));
+                            }}
+                            className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 outline-none focus:border-accent text-zinc-900 text-xs font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-medium text-zinc-500 block mb-1">Período Contratado</label>
+                          <select
+                            name="domainDurationYears"
+                            value={formData.domainDurationYears || 1}
+                            onChange={(e) => {
+                              const years = Number(e.target.value) || 1;
+                              const price = DOMAIN_YEAR_PRICES[years] || 40;
+                              const baseContractDate = formData.domainContractDate || formData.hireDate || new Date().toISOString().split('T')[0];
+                              const [cy, cm, cd] = baseContractDate.split('-').map(Number);
+                              const expDate = new Date(cy + years, cm - 1, cd);
+                              const expDateStr = `${expDate.getFullYear()}-${String(expDate.getMonth() + 1).padStart(2, '0')}-${String(expDate.getDate()).padStart(2, '0')}`;
+
+                              setFormData(prev => ({
+                                ...prev,
+                                domainDurationYears: years,
+                                domainPrice: price,
+                                domainExpirationDate: expDateStr
+                              }));
+                            }}
+                            className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 outline-none focus:border-accent text-zinc-900 text-xs font-medium cursor-pointer"
+                          >
+                            {DOMAIN_YEAR_OPTIONS.map(opt => (
+                              <option key={opt.years} value={opt.years}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Botões rápidos de seleção de período (1 ano: 40 / 2 anos: 80 / 3 anos: 120 / 5 anos: 200) */}
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {DOMAIN_YEAR_OPTIONS.map(opt => {
+                          const isSelected = (formData.domainDurationYears || 1) === opt.years;
+                          return (
+                            <button
+                              key={opt.years}
+                              type="button"
+                              onClick={() => {
+                                const years = opt.years;
+                                const price = opt.price;
+                                const baseContractDate = formData.domainContractDate || formData.hireDate || new Date().toISOString().split('T')[0];
+                                const [cy, cm, cd] = baseContractDate.split('-').map(Number);
+                                const expDate = new Date(cy + years, cm - 1, cd);
+                                const expDateStr = `${expDate.getFullYear()}-${String(expDate.getMonth() + 1).padStart(2, '0')}-${String(expDate.getDate()).padStart(2, '0')}`;
+
+                                setFormData(prev => ({
+                                  ...prev,
+                                  domainDurationYears: years,
+                                  domainPrice: price,
+                                  domainExpirationDate: expDateStr
+                                }));
+                              }}
+                              className={`py-1 px-1.5 rounded-lg text-center border text-[11px] font-semibold transition-all cursor-pointer ${
+                                isSelected 
+                                  ? 'bg-accent text-black border-accent shadow-xs' 
+                                  : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
+                              }`}
+                            >
+                              <div className="font-bold">{opt.years} {opt.years === 1 ? 'Ano' : 'Anos'}</div>
+                              <div className="text-[10px] font-mono opacity-80">R$ {opt.price}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Preview de Validade e Dias Restantes */}
+                      {(() => {
+                        const domInfo = getClientDomainInfo(formData as any);
+                        return (
+                          <div className="flex items-center justify-between pt-2 border-t border-zinc-200/80 text-[11px]">
+                            <span className="text-zinc-500">Validade: <strong className="text-zinc-800 font-mono">{domInfo.formattedDate}</strong></span>
+                            <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                              domInfo.isExpired 
+                                ? 'bg-rose-100 text-rose-700' 
+                                : domInfo.isExpiringSoon 
+                                ? 'bg-amber-100 text-amber-800' 
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {domInfo.statusText}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-zinc-700">URL da Logo (ou use upload acima)</label>
                     <input 
@@ -566,7 +709,7 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-zinc-700">Data de Contratação</label>
+                    <label className="text-sm font-semibold text-zinc-700">Data de Contratação do Cliente</label>
                     <input 
                       type="date"
                       name="hireDate"

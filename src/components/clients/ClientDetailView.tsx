@@ -3,10 +3,10 @@ import {
   ArrowLeft, Users, Database,
   FileText, MoreVertical, Edit2, Ban, Trash2, CheckCircle,
   Rocket, Power, Code, Hand, Clock, Check, Sparkles, CreditCard, Phone,
-  Copy
+  Copy, Globe, Calendar
 } from 'lucide-react';
 import {  ClientData } from '../../types';
-import {  cn, formatClientRenewalDate, getClientDaysUntilRenewal, isClientRenewalAlert } from '../../utils';
+import {  cn, formatClientRenewalDate, getClientDaysUntilRenewal, isClientRenewalAlert, getClientDomainInfo } from '../../utils';
 import {  db, auth, app } from '../../lib/firebase';
 import {  doc, onSnapshot, updateDoc, deleteDoc } from 'firebase/firestore';
 import {  ClientModal } from './ClientModal';
@@ -603,27 +603,64 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                     )}
                     {displayDomain && (
                       <div>
-                        <span className="block text-sm text-zinc-500 mb-1">Site da empresa</span>
+                        <span className="block text-sm text-zinc-500 mb-1">Domínio / Site da Empresa</span>
                         <a 
                           href={displayDomain.startsWith('http') ? displayDomain : `https://${displayDomain}`} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="text-accent hover:underline break-words"
+                          className="text-accent hover:underline break-words font-mono font-medium"
                         >
                           {displayDomain}
                         </a>
                       </div>
                     )}
+                    {displayDomain && (() => {
+                      const domInfo = getClientDomainInfo(client);
+                      return (
+                        <>
+                          <div>
+                            <span className="block text-sm text-zinc-500 mb-1">Validade do Domínio</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-zinc-800 font-mono font-medium">{domInfo.formattedDate}</span>
+                              <span className={cn(
+                                "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                                domInfo.isExpired 
+                                  ? "bg-rose-100 text-rose-700 border border-rose-200" 
+                                  : domInfo.isExpiringSoon 
+                                  ? "bg-amber-100 text-amber-800 border border-amber-200" 
+                                  : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                              )}>
+                                {domInfo.statusText}
+                              </span>
+                            </div>
+                          </div>
+                          <div>
+                            <span className="block text-sm text-zinc-500 mb-1">Registro do Domínio</span>
+                            <span className="text-zinc-800">
+                              {domInfo.years} {domInfo.years === 1 ? 'Ano' : 'Anos'} (R$ {Number(domInfo.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                    {(client.domainContractDate || client.hireDate) && (
+                      <div>
+                        <span className="block text-sm text-zinc-500 mb-1">Data da Contratação do Domínio</span>
+                        <span className="text-zinc-800">
+                          {new Date((client.domainContractDate || client.hireDate) + 'T12:00:00').toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
                     {client.hireDate && (
                       <div>
-                        <span className="block text-sm text-zinc-500 mb-1">Data da contratação</span>
-                        <span className="text-zinc-800">{new Date(client.hireDate).toLocaleDateString()}</span>
+                        <span className="block text-sm text-zinc-500 mb-1">Data da Contratação do Cliente</span>
+                        <span className="text-zinc-800">{new Date(client.hireDate + 'T12:00:00').toLocaleDateString()}</span>
                       </div>
                     )}
                     {client.endDate && (
                       <div>
-                        <span className="block text-sm text-zinc-500 mb-1">Data do encerramento</span>
-                        <span className="text-zinc-800">{new Date(client.endDate).toLocaleDateString()}</span>
+                        <span className="block text-sm text-zinc-500 mb-1">Data do Encerramento</span>
+                        <span className="text-zinc-800">{new Date(client.endDate + 'T12:00:00').toLocaleDateString()}</span>
                       </div>
                     )}
                   </div>

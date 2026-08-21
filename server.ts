@@ -802,6 +802,16 @@ async function startServer() {
   });
 
   // Asaas Create Checkout & Customer API
+  app.get("/api/asaas/create-checkout", (req, res) => {
+    res.json({
+      status: "ok",
+      service: "AnimaSystem Asaas Checkout API",
+      environment: process.env.ASAAS_BASE_URL?.includes("api.asaas.com") ? "production" : "sandbox",
+      hasApiKey: !!process.env.ASAAS_API_KEY,
+      message: "API operacional. Envie uma requisição POST com os dados do cliente e plano para gerar o checkout."
+    });
+  });
+
   app.post("/api/asaas/create-checkout", async (req, res) => {
     try {
       const { planId, items, coupon, customer, ownerId, userId, isRenewal, clientId, renewalMonths } = req.body;

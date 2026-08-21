@@ -1,6 +1,6 @@
-import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { firestoreAddDoc, firestoreGetDoc, firestoreUpdateDoc, firestoreQuery } from './_firebase-rest';
 
-export async function processConfirmedAsaasPayment(db: any, orderData: any, paymentDetails?: any) {
+export async function processConfirmedAsaasPayment(_db: any, orderData: any, paymentDetails?: any) {
   try {
     const ownerId = orderData.ownerId || "6rbybX9mBAMp8B6gS3zQ8rT0hW32";
     const amount = Number(orderData.amount || paymentDetails?.value || 0);
@@ -12,14 +12,10 @@ export async function processConfirmedAsaasPayment(db: any, orderData: any, paym
     const paymentRefId = orderData.asaasPaymentId || paymentDetails?.id || orderData.orderId;
 
     // 1. Register 'entrada' in Transactions collection
-    const transQ = query(
-      collection(db, "transactions"),
-      where("paymentId", "==", paymentRefId)
-    );
-    const transSnap = await getDocs(transQ);
+    const existingTransactions = await firestoreQuery("transactions", "paymentId", paymentRefId);
 
-    if (transSnap.empty) {
-      await addDoc(collection(db, "transactions"), {
+    if (existingTransactions.length === 0) {
+      await firestoreAddDoc("transactions", {
         ownerId,
         title: `Assinatura Plano ${planName} - Asaas`,
         type: "entrada",
@@ -31,7 +27,7 @@ export async function processConfirmedAsaasPayment(db: any, orderData: any, paym
         gateway: "asaas",
         paymentId: paymentRefId,
         orderId: orderData.orderId,
-        createdAt: serverTimestamp()
+        createdAt: new Date().toISOString()
       });
       console.log(`[Asaas] Registered entrada in transactions: R$ ${amount} from ${clientName}`);
     }
@@ -42,23 +38,19 @@ export async function processConfirmedAsaasPayment(db: any, orderData: any, paym
 
     if (orderData.clientId) {
       try {
-        const directSnap = await getDoc(doc(db, "clients", orderData.clientId));
-        if (directSnap.exists()) {
-          existingClientId = directSnap.id;
-          existingClientData = directSnap.data();
+        const directDoc = await firestoreGetDoc("clients", orderData.clientId);
+        if (directDoc) {
+          existingClientId = directDoc.id;
+          existingClientData = directDoc.data;
         }
       } catch (e) {}
     }
 
     if (!existingClientId && orderData.customerCpf) {
-      const clientQ = query(
-        collection(db, "clients"),
-        where("cpf", "==", orderData.customerCpf)
-      );
-      const clientSnap = await getDocs(clientQ);
-      if (!clientSnap.empty) {
-        existingClientId = clientSnap.docs[0].id;
-        existingClientData = clientSnap.docs[0].data();
+      const clientDocs = await firestoreQuery("clients", "cpf", orderData.customerCpf);
+      if (clientDocs.length > 0) {
+        existingClientId = clientDocs[0].id;
+        existingClientData = clientDocs[0].data;
       }
     }
 
@@ -77,7 +69,7 @@ export async function processConfirmedAsaasPayment(db: any, orderData: any, paym
       baseDate.setMonth(baseDate.getMonth() + (isRenewal ? renewalMonths : 1));
       const newRenewalDateStr = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
 
-      await updateDoc(doc(db, "clients", existingClientId), {
+      await firestoreUpdateDoc("clients", existingClientId, {
         status: "active",
         plan: planName,
         monthlyValue: amount,
@@ -93,7 +85,7 @@ export async function processConfirmedAsaasPayment(db: any, orderData: any, paym
       baseDate.setMonth(baseDate.getMonth() + renewalMonths);
       const newRenewalDateStr = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
 
-      const newClientRef = await addDoc(collection(db, "clients"), {
+      existingClientId = await firestoreAddDoc("clients", {
         name: clientName,
         responsible: clientName,
         logoInitials: clientName.slice(0, 2).toUpperCase(),
@@ -113,18 +105,13 @@ export async function processConfirmedAsaasPayment(db: any, orderData: any, paym
         hireDate: todayStr,
         createdAt: new Date().toISOString()
       });
-      existingClientId = newClientRef.id;
     }
 
     // 3. Update Leads collection to converted
     if (orderData.customerCpf) {
-      const leadQ = query(
-        collection(db, "leads"),
-        where("cpf", "==", orderData.customerCpf)
-      );
-      const leadSnap = await getDocs(leadQ);
-      for (const leadDoc of leadSnap.docs) {
-        await updateDoc(doc(db, "leads", leadDoc.id), {
+      const leadDocs = await firestoreQuery("leads", "cpf", orderData.customerCpf);
+      for (const leadDoc of leadDocs) {
+        await firestoreUpdateDoc("leads", leadDoc.id, {
           status: "converted",
           updatedAt: new Date().toISOString()
         });

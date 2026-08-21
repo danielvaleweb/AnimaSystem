@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
-import { getServerFirebase } from '../_firebase';
+import { firestoreQuery, firestoreUpdateDoc } from '../_firebase-rest';
 import { processConfirmedAsaasPayment } from '../_asaas-processor';
 
 function getAsaasApiUrl(endpoint: string): string {
@@ -32,22 +31,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { db } = getServerFirebase();
     const { orderId } = req.query;
 
     if (!orderId || typeof orderId !== "string") {
       return res.status(400).json({ error: "Parâmetro orderId obrigatório." });
     }
 
-    const q = query(collection(db, "orders"), where("orderId", "==", orderId));
-    const snap = await getDocs(q);
+    const orderDocs = await firestoreQuery("orders", "orderId", orderId);
 
-    if (snap.empty) {
+    if (orderDocs.length === 0) {
       return res.status(404).json({ error: "Pedido não encontrado." });
     }
 
-    const orderDocSnap = snap.docs[0];
-    const orderData = orderDocSnap.data();
+    const orderDoc = orderDocs[0];
+    const orderData = orderDoc.data;
 
     if (orderData.status === "paid") {
       return res.status(200).json({
@@ -94,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (paymentStatus && confirmedStatuses.includes(paymentStatus)) {
         let clientId = null;
         try {
-          await updateDoc(doc(db, "orders", orderDocSnap.id), {
+          await firestoreUpdateDoc("orders", orderDoc.id, {
             status: "paid",
             asaasPaymentStatus: paymentStatus,
             billingType: paymentData?.billingType || orderData.billingType,
@@ -102,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             updatedAt: new Date().toISOString()
           });
 
-          clientId = await processConfirmedAsaasPayment(db, orderData, paymentData);
+          clientId = await processConfirmedAsaasPayment(null, orderData, paymentData);
         } catch (syncErr) {
           console.error("Error updating Firestore on confirmed payment:", syncErr);
         }

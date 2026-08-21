@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { collection, getDocs, getDoc, doc } from "firebase/firestore";
-import { getServerFirebase } from './_firebase';
+import { firestoreGetDoc, firestoreListDocs } from './_firebase-rest';
 
 function cleanDomain(d: string): string {
   return d.toLowerCase()
@@ -26,8 +25,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const targetId = (id || client) as string | undefined;
     const targetDomain = (domain || host) as string | undefined;
 
-    const { db } = getServerFirebase();
-    const clientsRef = collection(db, "clients");
     let clientData: any = null;
     let clientDocId: string = "";
 
@@ -35,10 +32,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (targetId && typeof targetId === "string" && targetId.trim() !== "") {
       const cleanId = targetId.trim();
       try {
-        const directSnap = await getDoc(doc(db, "clients", cleanId));
-        if (directSnap.exists()) {
-          clientDocId = directSnap.id;
-          clientData = directSnap.data();
+        const directDoc = await firestoreGetDoc("clients", cleanId);
+        if (directDoc) {
+          clientDocId = directDoc.id;
+          clientData = directDoc.data;
         }
       } catch (e) {
         console.warn("Direct getDoc failed for id:", cleanId, e);
@@ -48,20 +45,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 2. Search across all clients by ID or domain / website
     if (!clientData) {
       try {
-        const allClientsSnap = await getDocs(clientsRef);
+        const allClients = await firestoreListDocs("clients", 100);
         const normalizedTargetDomain = targetDomain ? cleanDomain(targetDomain) : '';
         const cleanTargetId = targetId ? targetId.trim().toLowerCase() : '';
         
-        for (const docSnap of allClientsSnap.docs) {
-          const d = docSnap.data();
-          const curDocId = docSnap.id.toLowerCase();
+        for (const docObj of allClients) {
+          const d = docObj.data;
+          const curDocId = docObj.id.toLowerCase();
           const curInternalId = d.id ? String(d.id).toLowerCase() : '';
           const docDomain = d.domain ? cleanDomain(d.domain) : '';
           const docWebsite = d.website ? cleanDomain(d.website) : '';
           
           if (cleanTargetId && (curDocId === cleanTargetId || curInternalId === cleanTargetId)) {
             clientData = d;
-            clientDocId = docSnap.id;
+            clientDocId = docObj.id;
             break;
           }
 
@@ -70,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             (docWebsite && (docWebsite === normalizedTargetDomain || normalizedTargetDomain.includes(docWebsite) || docWebsite.includes(normalizedTargetDomain)))
           )) {
             clientData = d;
-            clientDocId = docSnap.id;
+            clientDocId = docObj.id;
             break;
           }
         }

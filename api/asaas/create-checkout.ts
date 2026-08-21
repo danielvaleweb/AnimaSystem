@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { collection, addDoc, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
-import { getServerFirebase } from '../_firebase';
+import { firestoreAddDoc, firestoreQuery } from '../_firebase-rest';
 
 // Helper to build robust Asaas API URLs with proper base and query parameters
 function getAsaasApiUrl(endpoint: string, queryParams?: Record<string, string | number | boolean | undefined>): string {
@@ -47,13 +46,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
+  // Helpful status message on GET request
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      status: "ok",
+      service: "AnimaSystem Asaas Checkout API",
+      environment: process.env.ASAAS_BASE_URL?.includes("api.asaas.com") ? "production" : "sandbox",
+      hasApiKey: !!process.env.ASAAS_API_KEY,
+      message: "API operacional. Envie uma requisição POST com os dados do cliente e plano para gerar o checkout."
+    });
+  }
+
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    return res.status(405).json({ error: 'Método não permitido. Use POST.' });
   }
 
   try {
-    const { db } = getServerFirebase();
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+    let body: any = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        body = {};
+      }
+    }
+    body = body || {};
+
     const { planId, items, coupon, customer, ownerId, userId, isRenewal, clientId, renewalMonths } = body;
 
     if (!customer || !customer.name || !customer.cpf) {
@@ -63,17 +81,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const ASAAS_API_KEY = (process.env.ASAAS_API_KEY || "").trim().replace(/^[`'"]+|[`'"]+$/g, "");
     if (!ASAAS_API_KEY) {
       console.error("ASAAS_API_KEY is not defined in environment variables.");
-      return res.status(500).json({ error: "Integração Asaas não configurada no servidor (ASAAS_API_KEY ausente nas variáveis de ambiente da Vercel)." });
+      return res.status(500).json({ 
+        error: "Chave da API do Asaas não configurada no servidor (adicione a variável ASAAS_API_KEY nas configurações de ambiente da Vercel)." 
+      });
     }
 
     // 1. Sanitize customer data
-    const cleanCpf = (customer.cpf || "").replace(/\D/g, "");
-    const cleanPhone = (customer.phone || "").replace(/\D/g, "");
-    const cleanEmail = (customer.email || "").trim() || `cliente_${cleanCpf}@animasystem.com.br`;
-    const customerName = customer.name.trim();
+    const cleanCpf = String(customer.cpf || "").replace(/\D/g, "");
+    const cleanPhone = String(customer.phone || "").replace(/\D/g, "");
+    const cleanEmail = String(customer.email || "").trim() || `cliente_${cleanCpf}@animasystem.com.br`;
+    const customerName = String(customer.name || "").trim();
 
     if (cleanCpf.length !== 11) {
-      return res.status(400).json({ error: "CPF inválido. Deve conter 11 dígitos numéricos." });
+      return res.status(400).json({ error: "CPF inválido. Deve conter exatamente 11 dígitos numéricos." });
     }
 
     const asaasHeaders = {
@@ -95,8 +115,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (searchData.data && searchData.data.length > 0) {
           asaasCustomerId = searchData.data[0].id;
           
+          // Background update details if needed
           const updateCustomerUrl = getAsaasApiUrl(`/customers/${asaasCustomerId}`);
-          await fetch(updateCustomerUrl, {
+          fetch(updateCustomerUrl, {
             method: "POST",
             headers: asaasHeaders,
             body: JSON.stringify({
@@ -130,7 +151,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!createCustomerRes.ok) {
         const errData: any = await createCustomerRes.json().catch(() => ({}));
         console.error("Asaas create customer failed:", errData);
-        const errorMsg = errData.errors?.[0]?.description || "Não foi possível registrar o cliente no Asaas.";
+        const errorMsg = errData.errors?.[0]?.description || "Não foi possível registrar o cliente no Asaas. Verifique os dados informados.";
         return res.status(400).json({ error: errorMsg });
       }
 
@@ -173,23 +194,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let discountPercent = 0;
     if (coupon) {
       const c = String(coupon).trim().toUpperCase();
-      // Check database coupons
       try {
-        const couponsQ = query(collection(db, "coupons"), where("code", "==", c), where("active", "==", true));
-        const coupSnap = await getDocs(couponsQ);
-        if (!coupSnap.empty) {
-          const cData = coupSnap.docs[0].data();
-          if (cData.discountPercent) {
+        const couponsFound = await firestoreQuery("coupons", "code", c);
+        if (couponsFound.length > 0) {
+          const cData = couponsFound[0].data;
+          if (cData.active !== false && cData.discountPercent) {
             discountPercent = Number(cData.discountPercent);
           }
         }
       } catch (e) {
-        console.warn("Could not query coupons collection:", e);
+        console.warn("Could not query coupons:", e);
       }
       
       if (!discountPercent) {
         if (c === "ANIMA10" || c === "DESCONTO10") discountPercent = 10;
-        else if (c === "VIP") discountPercent = 15;
+        else if (c === "VIP" || c === "RENOVAVIP") discountPercent = 15;
+        else if (c === "ANIMA20" || c === "PROMO20") discountPercent = 20;
       }
     }
 
@@ -204,7 +224,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     dueDate.setDate(dueDate.getDate() + 3);
     const dueDateStr = dueDate.toISOString().split("T")[0];
 
-    // 5. Create Asaas Checkout
+    // 5. Create Asaas Checkout (Try subscription first, fallback to payment)
     let checkoutUrl = "";
     let asaasPaymentId: string | null = null;
     let asaasSubscriptionId: string | null = null;
@@ -275,12 +295,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!checkoutUrl) {
-      return res.status(500).json({ error: "URL de checkout do Asaas não foi gerada." });
+      return res.status(500).json({ error: "URL de checkout do Asaas não foi retornada pela API." });
     }
 
     checkoutUrl = checkoutUrl.trim().replace(/^http:\/\//i, "https://");
 
-    // 6. Record Order in Firestore
+    // 6. Record Order in Firestore (via REST)
     const orderDoc = {
       orderId,
       userId: userId || null,
@@ -306,15 +326,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     try {
-      await addDoc(collection(db, "orders"), orderDoc);
+      await firestoreAddDoc("orders", orderDoc);
     } catch (firestoreErr) {
-      console.error("Error saving order to Firestore:", firestoreErr);
+      console.warn("Could not save order in Firestore REST:", firestoreErr);
     }
 
     // 7. Also record Lead in Firestore for CRM dashboard
     try {
       const effectiveOwnerUid = ownerId || "6rbybX9mBAMp8B6gS3zQ8rT0hW32";
-      await addDoc(collection(db, "leads"), {
+      await firestoreAddDoc("leads", {
         ownerId: effectiveOwnerUid,
         name: customerName,
         phone: customer.phone || cleanPhone,
@@ -326,7 +346,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: `Checkout Asaas iniciado. Pedido: ${orderId}. Valor: R$ ${finalAmount.toFixed(2)}. CPF: ${cleanCpf}`
       });
     } catch (leadErr) {
-      console.error("Error recording lead in Firestore:", leadErr);
+      console.warn("Could not record lead in Firestore REST:", leadErr);
     }
 
     return res.status(200).json({
@@ -337,6 +357,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error("Error in Asaas checkout serverless endpoint:", error);
-    return res.status(500).json({ error: error.message || "Não foi possível iniciar o pagamento. Tente novamente." });
+    return res.status(500).json({ 
+      error: error.message || "Erro inesperado ao processar pagamento com Asaas." 
+    });
   }
 }
