@@ -421,7 +421,12 @@ export default function CheckoutView() {
         })
       });
 
-      const data = await response.json();
+      let data: any = {};
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        console.warn('Could not parse response as JSON:', parseErr);
+      }
 
       if (response.ok && data.checkoutUrl) {
         const secureUrl = data.checkoutUrl.replace(/^http:\/\//i, 'https://');
@@ -443,11 +448,11 @@ export default function CheckoutView() {
           console.warn('Pop-up bloqueado pelo navegador:', e);
         }
       } else {
-        setLeadError(data.error || 'Não foi possível iniciar o pagamento. Tente novamente.');
+        setLeadError(data.error || (response.status === 405 ? 'Serviço de pagamento indisponível no momento. Tente novamente.' : 'Não foi possível iniciar o pagamento. Tente novamente.'));
       }
     } catch (err: any) {
       console.error('Error connecting to Asaas checkout:', err);
-      setLeadError('Não foi possível iniciar o pagamento. Tente novamente.');
+      setLeadError(err.message || 'Não foi possível iniciar o pagamento. Tente novamente.');
     } finally {
       setIsSubmittingLead(false);
     }
