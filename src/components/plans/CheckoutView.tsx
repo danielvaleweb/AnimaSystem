@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   ShoppingCart, Trash2, ArrowLeft, Check, QrCode, Copy, 
   ShieldCheck, CheckCircle2, Building, User, FileText, Globe, 
-  Tag, ChevronLeft, ChevronRight, Info, Plus, Sparkles, Headphones, Server, Zap, X, ArrowRight, Lock, Phone, Mail, ExternalLink
+  Tag, ChevronLeft, ChevronRight, Info, Plus, Sparkles, Headphones, Server, Zap, X, ArrowRight, Lock, Phone, Mail, ExternalLink, CreditCard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, addDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
@@ -42,7 +42,13 @@ export default function CheckoutView() {
     searchParams.get('type') === 'renewal' || 
     searchParams.get('type') === 'renovacao' || 
     planParam === 'renovacao';
-  const clientIdParam = searchParams.get('client') || searchParams.get('clientId') || '';
+  const clientIdParam = searchParams.get('client') || 
+    searchParams.get('clientId') || 
+    searchParams.get('cId') || 
+    searchParams.get('id') || 
+    localStorage.getItem('admin_client_id') || 
+    localStorage.getItem('active_client_id') || 
+    '';
   const initialMonths = Math.max(1, parseInt(searchParams.get('months') || '1', 10));
 
   // Base plan details
@@ -150,6 +156,7 @@ export default function CheckoutView() {
   // Modal & Lead registration state
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<'lead_form' | 'asaas_redirect' | 'pix_payment'>('lead_form');
+  const [activePaymentTab, setActivePaymentTab] = useState<'pix' | 'asaas_page'>('pix');
   const [leadName, setLeadName] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
@@ -157,9 +164,22 @@ export default function CheckoutView() {
   const [leadError, setLeadError] = useState('');
   const [generatedCheckoutUrl, setGeneratedCheckoutUrl] = useState('');
   const [activeOrderId, setActiveOrderId] = useState('');
+  const [asaasPixQrCode, setAsaasPixQrCode] = useState<string | null>(null);
+  const [asaasPixCopyPaste, setAsaasPixCopyPaste] = useState<string | null>(null);
   const [isPaymentConfirmed, setIsPaymentConfirmed] = useState(false);
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [pixCopySuccess, setPixCopySuccess] = useState(false);
+
+  const [activeAsaasPaymentId, setActiveAsaasPaymentId] = useState<string | null>(null);
+  const [ccNumber, setCcNumber] = useState('');
+  const [ccName, setCcName] = useState('');
+  const [ccExpiry, setCcExpiry] = useState('');
+  const [ccCcv, setCcCcv] = useState('');
+  const [ccInstallments, setCcInstallments] = useState(1);
+  const [isProcessingCc, setIsProcessingCc] = useState(false);
+  const [ccFeedback, setCcFeedback] = useState<{type: 'error'|'success', msg: string} | null>(null);
 
   const pixKey = '24981000306';
 
@@ -283,7 +303,7 @@ export default function CheckoutView() {
 
   // Automatic Asaas payment confirmation polling & redirect to Client Admin
   React.useEffect(() => {
-    if (!activeOrderId || modalStep !== 'asaas_redirect' || isPaymentConfirmed) return;
+    if (!activeOrderId || isPaymentConfirmed) return;
 
     let isMounted = true;
     const interval = setInterval(async () => {
@@ -300,9 +320,16 @@ export default function CheckoutView() {
               plan: planParam || 'Profissional',
               paidAt: new Date().toISOString()
             }));
+
+            // Fecha a janela de cima para baixo automaticamente e navega para o painel
             setTimeout(() => {
-              navigate('/admin-cliente');
-            }, 1800);
+              if (isMounted) {
+                setIsPaymentModalOpen(false);
+                setTimeout(() => {
+                  navigate('/admin-cliente');
+                }, 400);
+              }
+            }, 2400);
           }
         }
       } catch {
@@ -314,7 +341,7 @@ export default function CheckoutView() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [activeOrderId, modalStep, isPaymentConfirmed, leadName, planParam, total, navigate]);
+  }, [activeOrderId, isPaymentConfirmed, leadName, planParam, total, navigate]);
 
   const handleCopyPix = () => {
     navigator.clipboard.writeText(pixKey);
@@ -322,20 +349,62 @@ export default function CheckoutView() {
     setTimeout(() => setCopied(false), 3000);
   };
 
-  // Prefill client info if clientIdParam is present
+  // Prefill client info if clientIdParam or session is present
   React.useEffect(() => {
-    if (!clientIdParam) return;
     let isMounted = true;
     async function loadClientData() {
       try {
-        const clientSnap = await getDoc(doc(db, 'clients', clientIdParam));
-        if (clientSnap.exists() && isMounted) {
-          const d = clientSnap.data();
-          setClientInfo({ id: clientSnap.id, ...d });
-          if (d.responsible || d.name) setLeadName(d.responsible || d.name);
-          if (d.phone) setLeadPhone(d.phone);
-          if (d.cpf) setLeadCpf(d.cpf);
-          if (d.email || d.companyEmail) setLeadEmail(d.email || d.companyEmail);
+        let clientDocData: any = null;
+        let resolvedClientId = clientIdParam;
+
+        if (resolvedClientId) {
+          try {
+            const clientSnap = await getDoc(doc(db, 'clients', resolvedClientId));
+            if (clientSnap.exists()) {
+              clientDocData = { id: clientSnap.id, ...clientSnap.data() };
+            }
+          } catch (e) {}
+        }
+
+        // If not found by direct ID, check localStorage for client session
+        if (!clientDocData) {
+          const sessionUserStr = localStorage.getItem('client_session_user');
+          if (sessionUserStr) {
+            try {
+              const sessionUser = JSON.parse(sessionUserStr);
+              if (sessionUser.clientId) {
+                const clientSnap = await getDoc(doc(db, 'clients', sessionUser.clientId));
+                if (clientSnap.exists()) {
+                  clientDocData = { id: clientSnap.id, ...clientSnap.data() };
+                }
+              }
+            } catch (e) {}
+          }
+        }
+
+        // If still not found and user is logged in, look up client by email
+        if (!clientDocData && auth.currentUser?.email) {
+          try {
+            const q = query(collection(db, 'clients'), where('email', '==', auth.currentUser.email));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+              clientDocData = { id: snap.docs[0].id, ...snap.docs[0].data() };
+            }
+          } catch (e) {}
+        }
+
+        if (clientDocData && isMounted) {
+          const d = clientDocData;
+          setClientInfo(d);
+          const resolvedName = (d.responsible || d.name || d.companyRazaoSocial || '').trim();
+          const resolvedPhone = (d.phone || d.companyPhone || '').trim();
+          const resolvedCpf = (d.cpf || d.cnpj || d.companyCnpj || '').trim();
+          const resolvedEmail = (d.email || d.companyEmail || '').trim();
+
+          if (resolvedName) setLeadName(resolvedName);
+          if (resolvedPhone) setLeadPhone(resolvedPhone);
+          if (resolvedCpf) setLeadCpf(resolvedCpf);
+          if (resolvedEmail) setLeadEmail(resolvedEmail);
 
           const clientVal = (d.monthlyValue && Number(d.monthlyValue) > 0) ? Number(d.monthlyValue) : null;
           
@@ -343,7 +412,7 @@ export default function CheckoutView() {
             if (!item.isService) {
               return { 
                 ...item, 
-                name: isRenewal ? `Renovação de Hospedagem - ${d.name || 'Site'}` : item.name,
+                name: isRenewal ? `Renovação de Hospedagem - ${d.name || d.responsible || 'Site'}` : item.name,
                 image: d.logoUrl || item.image,
                 price: clientVal !== null ? clientVal : item.price, 
                 originalPrice: clientVal !== null ? Math.round(clientVal * 1.25) : item.originalPrice 
@@ -360,14 +429,115 @@ export default function CheckoutView() {
     return () => { isMounted = false; };
   }, [clientIdParam, isRenewal]);
 
-  // Handler when user clicks "Finalizar a Compra" on the page
-  const handleOpenCheckoutModal = () => {
+  // Core function to generate Asaas Checkout URL
+  const generateAsaasCheckout = async (name: string, email: string, phone: string, cpf: string) => {
+    setIsSubmittingLead(true);
     setLeadError('');
-    setModalStep('lead_form');
-    setIsPaymentModalOpen(true);
+    setIframeLoaded(false);
+
+    try {
+      const effName = (name || leadName || clientInfo?.responsible || clientInfo?.name || clientInfo?.companyRazaoSocial || '').trim();
+      const rawCpf = (cpf || leadCpf || clientInfo?.cpf || clientInfo?.cnpj || clientInfo?.companyCnpj || '').replace(/\D/g, '');
+      const rawPhone = (phone || leadPhone || clientInfo?.phone || clientInfo?.companyPhone || '').replace(/\D/g, '');
+      const rawEmail = (email || leadEmail || clientInfo?.email || clientInfo?.companyEmail || '').trim();
+      
+      const cleanEmail = rawEmail || (rawCpf ? `cliente_${rawCpf}@animasystem.com.br` : `cliente_${Date.now()}@animasystem.com.br`);
+      const mainItem = cartItems.find(item => !item.isService);
+      const renewalMonths = mainItem ? mainItem.quantity : 1;
+
+      const response = await fetch('/api/asaas/create-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          planId: planParam,
+          isRenewal: isRenewal,
+          clientId: clientIdParam || clientInfo?.id || undefined,
+          renewalMonths: renewalMonths,
+          items: cartItems.map(item => ({
+            id: item.id,
+            quantity: item.quantity
+          })),
+          coupon: couponInput.trim() || undefined,
+          customer: {
+            name: effName || 'Cliente AnimaSystem',
+            email: cleanEmail,
+            phone: rawPhone || undefined,
+            cpf: rawCpf || undefined
+          },
+          ownerId: auth.currentUser?.uid || '6rbybX9mBAMp8B6gS3zQ8rT0hW32',
+          userId: auth.currentUser?.uid || null
+        })
+      });
+
+      let data: any = {};
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        console.warn('Could not parse response as JSON:', parseErr);
+      }
+
+      if (response.ok && data.checkoutUrl) {
+        const secureUrl = data.checkoutUrl.replace(/^http:\/\//i, 'https://');
+        setGeneratedCheckoutUrl(secureUrl);
+        if (data.pixQrCode) {
+          setAsaasPixQrCode(data.pixQrCode);
+        }
+        if (data.pixCopyPaste) {
+          setAsaasPixCopyPaste(data.pixCopyPaste);
+        }
+        if (data.asaasPaymentId) {
+          setActiveAsaasPaymentId(data.asaasPaymentId);
+        }
+        if (data.orderId) {
+          setActiveOrderId(data.orderId);
+          localStorage.setItem('lastAsaasOrderId', data.orderId);
+          localStorage.setItem('lastCustomerName', effName);
+          localStorage.setItem('lastCustomerEmail', cleanEmail);
+          localStorage.setItem('lastPlanName', planParam || 'profissional');
+          localStorage.setItem('lastTotal', total.toFixed(2));
+        }
+        setModalStep('asaas_redirect');
+      } else {
+        const errMsg = data.error || (response.status === 405 ? 'Serviço de pagamento indisponível no momento. Tente novamente.' : 'Não foi possível gerar a fatura no Asaas.');
+        setLeadError(errMsg);
+        setModalStep('asaas_redirect');
+      }
+    } catch (err: any) {
+      console.error('Error connecting to Asaas checkout:', err);
+      setLeadError(err.message || 'Não foi possível conectar ao Asaas. Tente novamente.');
+      setModalStep('asaas_redirect');
+    } finally {
+      setIsSubmittingLead(false);
+    }
   };
 
-  // Handler for Lead Form submission with Asaas Integration
+  // Handler when user clicks "Finalizar Renovação" or "Finalizar Compra" -> Direct to Asaas
+  const handleOpenCheckoutModal = () => {
+    setLeadError('');
+    setIsPaymentConfirmed(false);
+
+    const effName = (leadName || clientInfo?.responsible || clientInfo?.name || clientInfo?.companyRazaoSocial || '').trim();
+    const effPhone = (leadPhone || clientInfo?.phone || clientInfo?.companyPhone || '').replace(/\D/g, '');
+    const effCpf = (leadCpf || clientInfo?.cpf || clientInfo?.cnpj || clientInfo?.companyCnpj || '').replace(/\D/g, '');
+    const effEmail = (leadEmail || clientInfo?.email || clientInfo?.companyEmail || '').trim();
+
+    // Se faltar informação crítica de nome
+    if (!effName && !clientInfo) {
+      setLeadError('Aviso: Falta a informação do Nome no cadastro do cliente.');
+    }
+
+    // Abre DIRETO a página de pagamento do Asaas / PIX
+    setIsPaymentModalOpen(true);
+    setModalStep('asaas_redirect');
+
+    if (!generatedCheckoutUrl) {
+      generateAsaasCheckout(effName, effEmail, effPhone, effCpf);
+    }
+  };
+
+  // Handler for Lead Form submission
   const handleLeadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLeadError('');
@@ -394,72 +564,70 @@ export default function CheckoutView() {
       return;
     }
 
-    setIsSubmittingLead(true);
-    try {
-      const cleanEmail = leadEmail.trim() || `cliente_${cleanCpf}@animasystem.com.br`;
-      const mainItem = cartItems.find(item => !item.isService);
-      const renewalMonths = mainItem ? mainItem.quantity : 1;
+    await generateAsaasCheckout(leadName, leadEmail, cleanPhone, cleanCpf);
+  };
 
-      const response = await fetch('/api/asaas/create-checkout', {
+  // Handler for Native Credit Card Payment
+  const handleCreditCardSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCcFeedback(null);
+    setIsProcessingCc(true);
+
+    try {
+      const ccData = {
+        number: ccNumber.replace(/\D/g, ''),
+        holderName: ccName.trim(),
+        expiryMonth: ccExpiry.split('/')[0]?.trim() || '',
+        expiryYear: ccExpiry.split('/')[1]?.trim() || '',
+        ccv: ccCcv.replace(/\D/g, '')
+      };
+
+      if (!ccData.number || !ccData.holderName || !ccData.expiryMonth || !ccData.expiryYear || !ccData.ccv) {
+        setCcFeedback({ type: 'error', msg: 'Por favor, preencha todos os campos do cartão.' });
+        setIsProcessingCc(false);
+        return;
+      }
+
+      const holderCpfCnpj = (leadCpf || clientInfo?.cpf || clientInfo?.cnpj || clientInfo?.companyCnpj || '').replace(/\D/g, '');
+      const holderPhone = (leadPhone || clientInfo?.phone || clientInfo?.companyPhone || '').replace(/\D/g, '');
+      const holderEmail = (leadEmail || clientInfo?.email || clientInfo?.companyEmail || '').trim();
+
+      const response = await fetch('/api/asaas/pay-credit-card', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          planId: planParam,
-          isRenewal: isRenewal,
-          clientId: clientIdParam || undefined,
-          renewalMonths: renewalMonths,
-          items: cartItems.map(item => ({
-            id: item.id,
-            quantity: item.quantity
-          })),
-          coupon: couponInput.trim() || undefined,
-          customer: {
-            name: leadName.trim(),
-            email: cleanEmail,
-            phone: cleanPhone,
-            cpf: cleanCpf
+          orderId: activeOrderId || undefined,
+          paymentId: activeAsaasPaymentId || undefined,
+          creditCard: ccData,
+          creditCardHolderInfo: {
+            name: ccData.holderName,
+            email: holderEmail || undefined,
+            cpfCnpj: holderCpfCnpj || undefined,
+            phone: holderPhone || undefined
           },
-          ownerId: auth.currentUser?.uid || '6rbybX9mBAMp8B6gS3zQ8rT0hW32',
-          userId: auth.currentUser?.uid || null
+          installmentCount: ccInstallments
         })
       });
 
-      let data: any = {};
+      let resData: any = {};
       try {
-        data = await response.json();
-      } catch (parseErr) {
-        console.warn('Could not parse response as JSON:', parseErr);
-      }
+        resData = await response.json();
+      } catch (parseErr) {}
 
-      if (response.ok && data.checkoutUrl) {
-        const secureUrl = data.checkoutUrl.replace(/^http:\/\//i, 'https://');
-        setGeneratedCheckoutUrl(secureUrl);
-        if (data.orderId) {
-          setActiveOrderId(data.orderId);
-          localStorage.setItem('lastAsaasOrderId', data.orderId);
-          localStorage.setItem('lastCustomerName', leadName.trim());
-          localStorage.setItem('lastCustomerEmail', cleanEmail);
-          localStorage.setItem('lastPlanName', planParam || 'profissional');
-          localStorage.setItem('lastTotal', total.toFixed(2));
-        }
-        setModalStep('asaas_redirect');
-
-        // Tenta abrir imediatamente em nova aba para contornar o bloqueio de iframes
-        try {
-          window.open(secureUrl, '_blank', 'noopener,noreferrer');
-        } catch (e) {
-          console.warn('Pop-up bloqueado pelo navegador:', e);
-        }
+      if (response.ok && resData.success) {
+        setCcFeedback({ type: 'success', msg: 'Pagamento aprovado com sucesso!' });
+        setIsPaymentConfirmed(true);
+        setTimeout(() => {
+          setIsPaymentModalOpen(false);
+          navigate('/admin-cliente');
+        }, 2500);
       } else {
-        setLeadError(data.error || (response.status === 405 ? 'Serviço de pagamento indisponível no momento. Tente novamente.' : 'Não foi possível iniciar o pagamento. Tente novamente.'));
+        setCcFeedback({ type: 'error', msg: resData.error || 'O pagamento foi recusado. Verifique os dados ou o limite do cartão.' });
       }
     } catch (err: any) {
-      console.error('Error connecting to Asaas checkout:', err);
-      setLeadError(err.message || 'Não foi possível iniciar o pagamento. Tente novamente.');
+      setCcFeedback({ type: 'error', msg: err.message || 'Erro de conexão ao processar o cartão.' });
     } finally {
-      setIsSubmittingLead(false);
+      setIsProcessingCc(false);
     }
   };
 
@@ -877,73 +1045,497 @@ export default function CheckoutView() {
 
       </main>
 
-      {/* JANELA MODAL DE BAIXO PARA CIMA (BOTTOM SHEET DRAWER) */}
+      {/* JANELA MODAL EM TELA CHEIA (ABRE DE CIMA PRA BAIXO, FECHA PARA BAIXO) */}
       <AnimatePresence>
         {isPaymentModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center">
-            
-            {/* Backdrop escuro */}
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsPaymentModalOpen(false)}
-              className="fixed inset-0 bg-black/75 backdrop-blur-xs cursor-pointer"
-            />
-
-            {/* Janela Drawer subindo de baixo */}
-            <motion.div 
-              initial={{ y: '100%', opacity: 0.5 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-              className="relative z-50 w-full max-w-2xl bg-white rounded-t-[2.5rem] shadow-2xl max-h-[92vh] flex flex-col overflow-hidden border-t border-zinc-200"
-            >
-              {/* Header do Drawer */}
-              <div className="p-6 pb-4 border-b border-zinc-100 flex items-center justify-between shrink-0 bg-zinc-50/50">
+          <motion.div 
+            initial={{ y: '-100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+            className="fixed inset-0 z-[100] w-full h-[100dvh] bg-[#F4F5F8] flex flex-col overflow-hidden select-auto font-sans"
+          >
+            {/* Header Fixo Superior no Padrão do Sistema */}
+            <header className="bg-white border-b border-zinc-200 shrink-0 z-30 shadow-xs">
+              <div className="w-full px-4 sm:px-8 xl:px-12 py-3.5 sm:py-4 flex items-center justify-between">
+                
+                {/* Lado Esquerdo: Identificação & Logo */}
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#0c0d0e] text-[#D7FE03] flex items-center justify-center font-black text-xs shadow-xs">
-                    AS
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#0c0d0e] text-[#D7FE03] flex items-center justify-center font-black text-xs shadow-xs">
+                    {clientInfo?.logoInitials || 'AS'}
                   </div>
                   <div>
-                    <h3 className="text-lg sm:text-xl font-black text-zinc-900 tracking-tight">
-                      {modalStep === 'lead_form' ? 'Identificação do Pedido' : 'Pagamento via PIX'}
-                    </h3>
-                    <p className="text-xs text-zinc-500">
-                      {modalStep === 'lead_form' 
-                        ? 'Preencha seus dados para vincular a assinatura e liberar o pagamento' 
-                        : 'Escaneie o QR Code ou copie a chave para ativação imediata'}
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-display font-bold text-base sm:text-lg text-zinc-900 leading-tight">
+                        {isRenewal ? 'Renovação Segura de Hospedagem' : 'Pagamento Seguro'}
+                      </h2>
+                      {clientInfo?.name && (
+                        <span className="hidden md:inline-flex items-center text-[11px] font-semibold px-2.5 py-0.5 bg-zinc-100 text-zinc-700 rounded-full border border-zinc-200">
+                          {clientInfo.name}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-zinc-500">
+                      Total: <strong className="text-zinc-900 font-extrabold font-mono">R$ {total.toFixed(2).replace('.', ',')}</strong> • Liberação e reconhecimento automático via Asaas
                     </p>
                   </div>
                 </div>
 
-                <button 
-                  type="button"
-                  onClick={() => setIsPaymentModalOpen(false)}
-                  className="w-9 h-9 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+                {/* Lado Direito: Ações (Abrir em Nova Aba + Fechar) */}
+                <div className="flex items-center gap-2">
+                  {generatedCheckoutUrl && modalStep === 'asaas_redirect' && (
+                    <a
+                      href={generatedCheckoutUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors cursor-pointer"
+                      title="Abrir em aba externa do Asaas"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Abrir em Nova Aba</span>
+                    </a>
+                  )}
 
-              {/* Conteúdo Dinâmico do Drawer */}
-              <div className="p-6 overflow-y-auto space-y-6">
-                
-                {modalStep === 'lead_form' ? (
-                  /* ETAPA 1: PEDIR APENAS NOME, TELEFONE E CPF */
-                  <form onSubmit={handleLeadSubmit} className="space-y-5">
-                    
-                    {/* Resumo rápido do total */}
-                    <div className="bg-zinc-50 border border-zinc-200/80 rounded-2xl p-4 flex items-center justify-between">
+                  <button 
+                    type="button"
+                    onClick={() => setIsPaymentModalOpen(false)}
+                    className="p-2 rounded-full hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 transition-colors cursor-pointer"
+                    title="Fechar Janela (Deslizar para baixo)"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+              </div>
+            </header>
+
+            {/* Conteúdo Central em Tela Toda */}
+            <main className="flex-1 flex flex-col w-full h-full relative overflow-hidden bg-white">
+              
+              {isPaymentConfirmed ? (
+                /* TELA DE SUCESSO E PAGAMENTO RECONHECIDO PELO ASAAS */
+                <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 text-center space-y-6 bg-white overflow-y-auto">
+                  <div className="w-24 h-24 rounded-full bg-[#D7FE03] flex items-center justify-center mx-auto text-black shadow-2xl animate-bounce">
+                    <CheckCircle2 className="w-14 h-14 text-black stroke-[2.5]" />
+                  </div>
+
+                  <div className="space-y-2 max-w-md">
+                    <span className="inline-block text-xs font-black bg-emerald-100 text-emerald-800 px-3.5 py-1 rounded-full uppercase tracking-wider">
+                      Pagamento Confirmado no Asaas
+                    </span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight">
+                      {isRenewal ? 'Hospedagem Renovada com Sucesso!' : 'Assinatura Ativada!'}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-zinc-600 font-medium leading-relaxed">
+                      Seu pagamento foi identificado e compensado em tempo real. O seu site e todos os serviços continuam 100% ativos e o aviso de vencimento foi removido.
+                    </p>
+                  </div>
+
+                  <div className="bg-zinc-50 border border-zinc-200/80 rounded-2xl p-5 max-w-sm w-full text-left space-y-2.5 shadow-xs">
+                    <div className="flex justify-between text-xs text-zinc-600">
+                      <span>Cliente:</span>
+                      <strong className="text-zinc-900">{leadName || clientInfo?.name}</strong>
+                    </div>
+                    <div className="flex justify-between text-xs text-zinc-600">
+                      <span>Valor Total Pago:</span>
+                      <strong className="text-zinc-900 font-mono font-bold">R$ {total.toFixed(2).replace('.', ',')}</strong>
+                    </div>
+                    <div className="flex justify-between text-xs text-zinc-600 pt-2 border-t border-zinc-200">
+                      <span>Status do Sistema:</span>
+                      <span className="text-emerald-700 font-bold flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5 stroke-[3]" /> Ativo & Liberado
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2.5 text-xs font-bold text-zinc-700 pt-2">
+                    <div className="w-4 h-4 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
+                    <span>Fechando janela e atualizando painel...</span>
+                  </div>
+                </div>
+              ) : modalStep === 'asaas_redirect' ? (
+                /* PÁGINA DE PAGAMENTO ASAAS E PIX NATIVO */
+                <div className="flex-1 flex flex-col w-full h-full relative overflow-hidden bg-zinc-900">
+                  
+                  {/* Faixa Superior com Informação de Sincronização em Tempo Real e Abas */}
+                  <div className="bg-[#0c0d0e] border-b border-zinc-800 text-white px-4 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-3">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#D7FE03] animate-ping" />
                       <div>
-                        <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Itens selecionados ({cartItems.length})</span>
-                        <span className="text-xs font-bold text-zinc-900">
-                          {cartItems.map(i => i.name).join(' + ')}
-                        </span>
+                        <div className="text-xs font-bold text-zinc-100 flex items-center gap-2">
+                          <span>Ambiente Seguro Asaas</span>
+                          <span className="text-[10px] bg-[#D7FE03] text-black px-2 py-0.5 rounded font-black uppercase tracking-wider">
+                            Reconhecimento Imediato
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-400">
+                          Pague via PIX com liberação instantânea ou abra o checkout completo do Asaas.
+                        </p>
                       </div>
-                      <div className="text-right">
-                        <span className="text-sm font-black text-zinc-900">R$ {total.toFixed(2).replace('.', ',')}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="bg-zinc-800/90 p-1 rounded-xl flex items-center border border-zinc-700">
+                        <button
+                          type="button"
+                          onClick={() => setActivePaymentTab('pix')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            activePaymentTab === 'pix'
+                              ? 'bg-[#D7FE03] text-black shadow-xs'
+                              : 'text-zinc-300 hover:text-white'
+                          }`}
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>PIX Imediato</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActivePaymentTab('asaas_page')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            activePaymentTab === 'asaas_page'
+                              ? 'bg-[#D7FE03] text-black shadow-xs'
+                              : 'text-zinc-300 hover:text-white'
+                          }`}
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          <span>Cartão de Crédito</span>
+                        </button>
                       </div>
+
+                      {generatedCheckoutUrl && (
+                        <a
+                          href={generatedCheckoutUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-[#D7FE03] border border-zinc-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
+                        >
+                          <span>Abrir no Asaas</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Conteúdo Principal: Aba PIX ou Aba Checkout Externo Asaas */}
+                  <div className="flex-1 w-full h-full relative bg-[#F4F5F8] overflow-y-auto">
+                    {activePaymentTab === 'pix' ? (
+                      <div className="min-h-full flex items-center justify-center p-4 sm:p-8">
+                        <div className="w-full max-w-2xl bg-white border border-zinc-200/80 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+                          
+                          {leadError && (
+                            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-3">
+                              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                              <div className="flex-1">
+                                <strong className="font-bold block text-amber-900 mb-0.5">Aviso sobre os Dados do Cadastro:</strong>
+                                <span>{leadError}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="text-center space-y-1">
+                            <div className="inline-flex items-center gap-2 bg-[#D7FE03]/20 border border-[#D7FE03]/40 text-black px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider">
+                              <Zap className="w-3.5 h-3.5 fill-black" />
+                              <span>Liberação em Menos de 30 Segundos</span>
+                            </div>
+                            <h3 className="text-2xl font-black text-zinc-900 tracking-tight">
+                              Escaneie o QR Code ou Copie o Código PIX
+                            </h3>
+                            <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                              Abra o aplicativo do seu banco, escolha <strong>Pagar com PIX</strong> e aponte a câmera ou cole o código Copia e Cola.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-zinc-50 p-5 sm:p-6 rounded-2xl border border-zinc-200/70">
+                            
+                            {/* QR Code Container */}
+                            <div className="md:col-span-5 flex flex-col items-center justify-center space-y-3">
+                              <div className="p-3 bg-white border border-zinc-200 rounded-2xl shadow-xs flex items-center justify-center">
+                                {asaasPixQrCode ? (
+                                  <img 
+                                    src={`data:image/png;base64,${asaasPixQrCode}`} 
+                                    alt="QR Code PIX Asaas" 
+                                    className="w-44 h-44 object-contain rounded-lg"
+                                  />
+                                ) : (
+                                  <div className="w-44 h-44 bg-zinc-100 flex flex-col items-center justify-center rounded-lg p-3 text-center space-y-2">
+                                    <QrCode className="w-10 h-10 text-zinc-400 animate-pulse" />
+                                    <span className="text-[11px] text-zinc-500 font-medium">Gerando QR Code PIX Asaas...</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                                <span>Aguardando pagamento no banco</span>
+                              </div>
+                            </div>
+
+                            {/* Resumo & Copia e Cola */}
+                            <div className="md:col-span-7 space-y-4">
+                              <div className="bg-white p-4 rounded-xl border border-zinc-200/80 space-y-2 text-xs">
+                                <div className="flex justify-between text-zinc-600">
+                                  <span>Beneficiário:</span>
+                                  <strong className="text-zinc-900 font-bold">Anima System / Asaas I.P. S.A.</strong>
+                                </div>
+                                <div className="flex justify-between text-zinc-600">
+                                  <span>Identificação:</span>
+                                  <strong className="text-zinc-900 font-mono">{activeOrderId || 'AS-RENOVACAO'}</strong>
+                                </div>
+                                <div className="flex justify-between text-zinc-600 pt-2 border-t border-zinc-100">
+                                  <span className="font-semibold">Valor Total com Desconto:</span>
+                                  <span className="text-base font-black text-zinc-900 font-mono">
+                                    R$ {total.toFixed(2).replace('.', ',')}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Código Copia e Cola */}
+                              <div className="space-y-1.5">
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600">
+                                  Código PIX Copia e Cola
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    readOnly
+                                    value={asaasPixCopyPaste || pixKey}
+                                    className="w-full bg-white border border-zinc-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-zinc-700 pr-24 focus:outline-none select-all"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const textToCopy = asaasPixCopyPaste || pixKey;
+                                      navigator.clipboard.writeText(textToCopy);
+                                      setPixCopySuccess(true);
+                                      setTimeout(() => setPixCopySuccess(false), 2500);
+                                    }}
+                                    className="absolute right-1.5 top-1.5 bottom-1.5 px-3 bg-zinc-900 hover:bg-black text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                  >
+                                    {pixCopySuccess ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-[#D7FE03]" />
+                                        <span className="text-[#D7FE03]">Copiado!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span>Copiar</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Ações e Outros Métodos */}
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setActivePaymentTab('asaas_page')}
+                                  className="text-xs text-zinc-600 hover:text-zinc-900 font-semibold underline flex items-center gap-1"
+                                >
+                                  Prefiro pagar com Cartão de Crédito
+                                </button>
+                              </div>
+                            </div>
+
+                          </div>
+
+                          {/* Dica de Segurança */}
+                          <div className="flex items-center justify-between text-xs text-zinc-500 bg-zinc-100/80 p-3 rounded-xl">
+                            <div className="flex items-center gap-2">
+                              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>O sistema identifica o pagamento no Asaas automaticamente a cada 2 segundos.</span>
+                            </div>
+                            <div className="flex items-center gap-1 font-mono text-[11px] text-zinc-400">
+                              <Lock className="w-3 h-3" />
+                              <span>SSL 256-Bit</span>
+                            </div>
+                          </div>
+
+                        </div>
+                      </div>
+                    ) : (
+                      /* Aba Cartão de Crédito Nativo */
+                      <div className="min-h-full flex items-center justify-center p-4 sm:p-8">
+                        <div className="w-full max-w-2xl bg-white border border-zinc-200/80 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+                          
+                          <div className="text-center space-y-1">
+                            <h3 className="text-2xl font-black text-zinc-900 tracking-tight">
+                              Pagamento com Cartão
+                            </h3>
+                            <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                              Insira os dados do seu cartão de crédito para finalizar a compra de forma segura.
+                            </p>
+                          </div>
+
+                          {ccFeedback && (
+                            <div className={`p-4 rounded-2xl text-xs flex items-start gap-3 ${
+                              ccFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                            }`}>
+                              <Info className={`w-4 h-4 shrink-0 mt-0.5 ${ccFeedback.type === 'error' ? 'text-red-600' : 'text-emerald-600'}`} />
+                              <div className="flex-1">
+                                <span>{ccFeedback.msg}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          <form onSubmit={handleCreditCardSubmit} className="space-y-4">
+                            <div>
+                              <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Número do Cartão</label>
+                              <div className="relative">
+                                <CreditCard className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="0000 0000 0000 0000"
+                                  value={ccNumber}
+                                  onChange={e => {
+                                    let val = e.target.value.replace(/\D/g, '').substring(0, 16);
+                                    val = val.replace(/(\d{4})/g, '$1 ').trim();
+                                    setCcNumber(val);
+                                  }}
+                                  className="w-full bg-zinc-50 border border-zinc-300 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Nome do Titular (como impresso)</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="NOME DO TITULAR"
+                                value={ccName}
+                                onChange={e => setCcName(e.target.value.toUpperCase())}
+                                className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors uppercase"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Validade</label>
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="MM/AA"
+                                  value={ccExpiry}
+                                  onChange={e => {
+                                    let val = e.target.value.replace(/\D/g, '').substring(0, 4);
+                                    if (val.length >= 2) {
+                                      val = `${val.substring(0, 2)}/${val.substring(2)}`;
+                                    }
+                                    setCcExpiry(val);
+                                  }}
+                                  className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">CVV</label>
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="123"
+                                  value={ccCcv}
+                                  onChange={e => setCcCcv(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                                  className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Only allow installments if total is greater than 100 */}
+                            {total >= 50 && (
+                              <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Parcelamento</label>
+                                <select
+                                  value={ccInstallments}
+                                  onChange={e => setCcInstallments(Number(e.target.value))}
+                                  className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors appearance-none cursor-pointer"
+                                >
+                                  {Array.from({ length: total >= 300 ? 6 : (total >= 150 ? 3 : 2) }, (_, i) => i + 1).map(num => (
+                                    <option key={num} value={num}>
+                                      {num}x de R$ {(total / num).toFixed(2).replace('.', ',')}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
+                            <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                              <div className="flex items-center gap-1 font-mono text-[11px] text-zinc-400 order-2 sm:order-1">
+                                <Lock className="w-3 h-3" />
+                                <span>SSL 256-Bit</span>
+                              </div>
+
+                              <div className="flex w-full sm:w-auto items-center gap-2 order-1 sm:order-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setActivePaymentTab('pix')}
+                                  className="px-4 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold text-xs rounded-xl transition-colors"
+                                  disabled={isProcessingCc}
+                                >
+                                  Voltar
+                                </button>
+                                <button
+                                  type="submit"
+                                  disabled={isProcessingCc}
+                                  className="flex-1 sm:flex-none px-6 py-3 bg-zinc-900 hover:bg-black text-[#D7FE03] font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                  {isProcessingCc ? (
+                                    <>
+                                      <div className="w-4 h-4 border-2 border-[#D7FE03] border-t-transparent rounded-full animate-spin" />
+                                      <span>Processando...</span>
+                                    </>
+                                  ) : (
+                                    <span>Pagar R$ {total.toFixed(2).replace('.', ',')}</span>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </form>
+
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Faixa Inferior com Instruções e Botão de Acesso */}
+                  <footer className="bg-white border-t border-zinc-200 px-4 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-2 text-xs text-zinc-600 font-medium">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Assim que o pagamento for concluído no Asaas, esta janela fechará automaticamente.</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (activeOrderId) {
+                            try {
+                              await fetch(`/api/asaas/check-order?orderId=${encodeURIComponent(activeOrderId)}`);
+                            } catch (e) {}
+                          }
+                          setIsPaymentModalOpen(false);
+                          navigate('/admin-cliente');
+                        }}
+                        className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                      >
+                        Já Paguei (Acessar Painel)
+                      </button>
+                    </div>
+                  </footer>
+
+                </div>
+              ) : (
+                /* FORMULÁRIO RÁPIDO DE DADOS CASO NÃO PREENCHIDO ANTERIORMENTE */
+                <div className="flex-1 overflow-y-auto p-6 sm:p-10 flex items-center justify-center bg-[#F4F5F8]">
+                  <div className="w-full max-w-xl bg-white border border-zinc-200/80 rounded-[2rem] p-6 sm:p-8 shadow-sm space-y-6">
+                    
+                    <div className="border-b border-zinc-100 pb-4">
+                      <h3 className="text-lg sm:text-xl font-bold text-zinc-900">
+                        {isRenewal ? 'Identificação da Renovação' : 'Dados do Pedido'}
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        Confirme seus dados para emissão da fatura e liberação imediata no Asaas.
+                      </p>
                     </div>
 
                     {leadError && (
@@ -952,11 +1544,11 @@ export default function CheckoutView() {
                       </div>
                     )}
 
-                    <div className="space-y-4">
+                    <form onSubmit={handleLeadSubmit} className="space-y-4">
                       {/* Campo Nome */}
                       <div>
                         <label className="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wider">
-                          Nome Completo *
+                          Nome Completo / Razão Social *
                         </label>
                         <div className="relative">
                           <User className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -981,7 +1573,7 @@ export default function CheckoutView() {
                           <input 
                             type="email"
                             required
-                            placeholder="Ex: joao@email.com"
+                            placeholder="Ex: contato@empresa.com.br"
                             value={leadEmail}
                             onChange={(e) => setLeadEmail(e.target.value)}
                             className="w-full bg-zinc-50 border border-zinc-200 rounded-xl pl-10 pr-4 py-3 text-xs font-semibold text-zinc-900 focus:outline-none focus:border-black focus:bg-white transition-all"
@@ -989,7 +1581,7 @@ export default function CheckoutView() {
                         </div>
                       </div>
 
-                      {/* Campo Telefone / WhatsApp */}
+                      {/* Campo Telefone */}
                       <div>
                         <label className="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wider">
                           Telefone / WhatsApp *
@@ -1007,7 +1599,7 @@ export default function CheckoutView() {
                         </div>
                       </div>
 
-                      {/* Campo CPF */}
+                      {/* Campo CPF / CNPJ */}
                       <div>
                         <label className="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wider">
                           CPF *
@@ -1024,245 +1616,33 @@ export default function CheckoutView() {
                           />
                         </div>
                       </div>
-                    </div>
 
-                    {/* Botão Finalizar Compra / Próximo */}
-                    <div className="pt-3">
-                      <button 
-                        type="submit"
-                        disabled={isSubmittingLead}
-                        className="w-full py-4 rounded-2xl bg-[#D7FE03] hover:bg-[#c2e502] disabled:opacity-50 text-black font-extrabold text-sm uppercase tracking-wider transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        {isSubmittingLead ? (
-                          <span>Iniciando pagamento seguro...</span>
-                        ) : (
-                          <>
-                            <span>Ir para Pagamento</span>
-                            <ArrowRight className="w-4 h-4 stroke-[3]" />
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                  </form>
-                ) : modalStep === 'asaas_redirect' ? (
-                  /* ETAPA: REDIRECIONAMENTO SEGURO ASAAS */
-                  isPaymentConfirmed ? (
-                    <div className="text-center py-8 space-y-5">
-                      <div className="w-18 h-18 rounded-full bg-[#D7FE03] flex items-center justify-center mx-auto text-black shadow-xl animate-bounce">
-                        <CheckCircle2 className="w-10 h-10 text-black stroke-[2.5]" />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <h3 className="text-lg font-black text-zinc-900 uppercase tracking-tight">
-                          Pagamento Confirmado no Asaas!
-                        </h3>
-                        <p className="text-xs text-zinc-600 max-w-xs mx-auto font-medium">
-                          Seu pagamento foi reconhecido com sucesso. Estamos abrindo seu Painel do Cliente agora...
-                        </p>
-                      </div>
-
-                      <div className="flex items-center justify-center gap-2 text-xs font-bold text-zinc-800 pt-2">
-                        <div className="w-4 h-4 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
-                        <span>Carregando ambiente exclusivo...</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 space-y-5">
-                      <div className="w-16 h-16 rounded-full bg-[#D7FE03]/20 border border-[#D7FE03] flex items-center justify-center mx-auto text-black shadow-xs">
-                        <CheckCircle2 className="w-8 h-8 text-zinc-900" />
-                      </div>
-
-                      <div className="space-y-1">
-                        <h3 className="text-base font-black text-zinc-900 uppercase tracking-tight">
-                          Pedido Gerado no Asaas!
-                        </h3>
-                        <p className="text-xs text-zinc-500 max-w-xs mx-auto">
-                          Conclua o pagamento na aba aberta do Asaas. Nosso sistema identificará automaticamente.
-                        </p>
-                      </div>
-
-                      <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 text-left space-y-2">
-                        <div className="flex justify-between text-xs font-bold text-zinc-700">
-                          <span>Cliente:</span>
-                          <span className="text-zinc-900">{leadName}</span>
-                        </div>
-                        <div className="flex justify-between text-xs font-bold text-zinc-700">
-                          <span>Itens:</span>
-                          <span className="text-zinc-900 truncate max-w-[180px]">{cartItems.map(i => i.name).join(' + ')}</span>
-                        </div>
-                        <div className="flex justify-between text-xs font-bold text-zinc-700 pt-1 border-t border-zinc-200">
-                          <span>Valor Total:</span>
-                          <span className="text-zinc-900 font-extrabold">R$ {total.toFixed(2).replace('.', ',')}</span>
-                        </div>
-                      </div>
-
-                      {/* Live listening indicator */}
-                      <div className="flex items-center justify-center gap-2 py-2 px-3 bg-zinc-100/80 rounded-xl text-[11px] font-semibold text-zinc-600">
-                        <span className="w-2 h-2 rounded-full bg-[#D7FE03] animate-ping" />
-                        <span>Sincronizando em tempo real com Asaas Sandbox...</span>
-                      </div>
-
-                      <div className="pt-1 space-y-2">
-                        <a 
-                          href={generatedCheckoutUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full py-4 rounded-2xl bg-[#D7FE03] hover:bg-[#c2e502] text-black font-extrabold text-sm uppercase tracking-wider transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer no-underline"
+                      {/* Botão Prosseguir */}
+                      <div className="pt-3">
+                        <button 
+                          type="submit"
+                          disabled={isSubmittingLead}
+                          className="w-full py-4 rounded-2xl bg-[#D7FE03] hover:bg-[#c2e502] disabled:opacity-50 text-black font-extrabold text-sm uppercase tracking-wider transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-2"
                         >
-                          <span>Abrir Pagamento Seguro no Asaas</span>
-                          <ExternalLink className="w-4 h-4 stroke-[2.5]" />
-                        </a>
-
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (activeOrderId) {
-                              try {
-                                await fetch(`/api/asaas/check-order?orderId=${encodeURIComponent(activeOrderId)}`);
-                              } catch (e) {
-                                console.warn('Check order failed on click:', e);
-                              }
-                            }
-                            setIsPaymentModalOpen(false);
-                            navigate('/admin-cliente');
-                          }}
-                          className="w-full py-3.5 rounded-xl bg-white hover:bg-zinc-50 border border-zinc-300 text-zinc-800 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-xs"
-                        >
-                          Já Paguei (Acessar Meu Painel)
+                          {isSubmittingLead ? (
+                            <span>Carregando ambiente Asaas...</span>
+                          ) : (
+                            <>
+                              <span>Ir para Pagamento Incorporado</span>
+                              <ArrowRight className="w-4 h-4 stroke-[3]" />
+                            </>
+                          )}
                         </button>
                       </div>
-                    </div>
-                  )
-                ) : (
-                  /* ETAPA 2: MOSTRAR AS INFORMAÇÕES DE PAGAMENTO E ITENS */
-                  <div className="space-y-6">
-                    
-                    {/* 1. Lista de tudo o que ela está comprando */}
-                    <div className="bg-zinc-50 border border-zinc-200/80 rounded-2xl p-5 space-y-3">
-                      <div className="flex items-center justify-between pb-2 border-b border-zinc-200/80">
-                        <span className="text-xs font-bold text-zinc-900 uppercase tracking-wider">
-                          Resumo da Compra ({cartItems.length} {cartItems.length === 1 ? 'item' : 'itens'})
-                        </span>
-                        <span className="text-[11px] text-zinc-500 font-medium">
-                          Cliente: {leadName}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2.5">
-                        {cartItems.map((item) => (
-                          <div key={item.id} className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-black shrink-0" />
-                              <span className="font-bold text-zinc-800">{item.name}</span>
-                              <span className="text-zinc-400 font-medium">({item.quantity} {item.quantity === 1 ? 'mês' : 'meses'})</span>
-                            </div>
-                            <span className="font-extrabold text-zinc-900">
-                              R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {discountPercent > 0 && (
-                        <div className="flex justify-between text-xs text-green-600 font-bold pt-2 border-t border-zinc-200/60">
-                          <span>Desconto Aplicado ({discountPercent}%)</span>
-                          <span>- R$ {discountVal.toFixed(2).replace('.', ',')}</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between pt-3 border-t border-zinc-200/80">
-                        <span className="text-sm font-black text-zinc-900">Valor Total a Pagar</span>
-                        <span className="text-xl font-black text-zinc-900">
-                          R$ {total.toFixed(2).replace('.', ',')}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 2. QR Code do PIX com identificador */}
-                    <div className="bg-white border border-zinc-200 rounded-2xl p-6 flex flex-col items-center text-center shadow-xs">
-                      <div className="inline-block text-[11px] font-extrabold bg-[#D7FE03] text-black px-4 py-1 rounded-full mb-3 uppercase tracking-wide shadow-xs">
-                        Comprando: {cartItems.map(i => i.name).join(' + ')}
-                      </div>
-
-                      <QrCode className="w-44 h-44 text-zinc-900 mb-2" />
-                      
-                      <span className="text-xs font-black text-zinc-700 tracking-widest uppercase">
-                        Animasystem.com.br
-                      </span>
-                      <span className="text-[11px] text-zinc-400 mt-0.5">
-                        Abra o app do seu banco e aponte a câmera para o QR Code
-                      </span>
-                    </div>
-
-                    {/* 3. Credenciais e Chave PIX com botão de copiar */}
-                    <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-zinc-700 uppercase tracking-wider">Dados da Chave PIX</span>
-                        <span className="text-[10px] bg-green-100 text-green-800 font-bold px-2.5 py-0.5 rounded-full">
-                          Aprovação Instantânea
-                        </span>
-                      </div>
-
-                      <div className="space-y-2 text-xs">
-                        <div className="flex items-center justify-between py-1.5 border-b border-zinc-200/80">
-                          <span className="text-zinc-500 font-medium">Chave PIX:</span>
-                          <span className="font-mono font-black text-zinc-900 text-sm select-all">{pixKey}</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1.5 border-b border-zinc-200/80">
-                          <span className="text-zinc-500 font-medium">Instituição:</span>
-                          <span className="font-semibold text-zinc-800">Banco Inter</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1.5 border-b border-zinc-200/80">
-                          <span className="text-zinc-500 font-medium">Nome:</span>
-                          <span className="font-semibold text-zinc-800">Daniel Vale</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-zinc-500 font-medium">CPF:</span>
-                          <span className="font-semibold text-zinc-800">142.xxx.xxx-45</span>
-                        </div>
-                      </div>
-
-                      {/* Botão de Copiar Chave */}
-                      <button 
-                        type="button"
-                        onClick={handleCopyPix}
-                        className="w-full py-3.5 rounded-xl bg-white hover:bg-zinc-100 border border-zinc-300 text-zinc-900 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-                      >
-                        {copied ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 text-green-600" /> Chave Copiada com Sucesso!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4 text-zinc-700" /> Copiar Chave PIX ({pixKey})
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Botão Já Paguei */}
-                    <div className="pt-2">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          setIsPaymentModalOpen(false);
-                          navigate('/admin-cliente');
-                        }}
-                        className="w-full py-4 rounded-2xl bg-[#D7FE03] hover:bg-[#c2e502] text-black font-extrabold text-sm uppercase tracking-wider transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        <Check className="w-5 h-5 text-black stroke-[3]" /> Já Paguei (Acessar Meu Painel)
-                      </button>
-                    </div>
+                    </form>
 
                   </div>
-                )}
+                </div>
+              )}
 
-              </div>
+            </main>
 
-            </motion.div>
-
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

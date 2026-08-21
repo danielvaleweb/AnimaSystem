@@ -816,8 +816,27 @@ async function startServer() {
     try {
       const { planId, items, coupon, customer, ownerId, userId, isRenewal, clientId, renewalMonths } = req.body;
 
-      if (!customer || !customer.name || !customer.cpf) {
-        return res.status(400).json({ error: "Dados do cliente incompletos (nome e CPF são obrigatórios)." });
+      // 1. Resolve customer data from request or database
+      let resolvedCustomer = { ...(customer || {}) };
+
+      if (clientId && (!resolvedCustomer.name || !resolvedCustomer.email)) {
+        try {
+          const clientDocSnap = await getDoc(doc(db, "clients", clientId));
+          if (clientDocSnap.exists()) {
+            const cd = clientDocSnap.data();
+            resolvedCustomer.name = resolvedCustomer.name || cd.responsible || cd.name || cd.companyRazaoSocial || "Cliente";
+            resolvedCustomer.email = resolvedCustomer.email || cd.email || cd.companyEmail || "";
+            resolvedCustomer.phone = resolvedCustomer.phone || cd.phone || cd.companyPhone || "";
+            resolvedCustomer.cpf = resolvedCustomer.cpf || cd.cpf || cd.cnpj || cd.companyCnpj || "";
+          }
+        } catch (dbErr) {
+          console.warn("Could not fetch client from Firestore:", dbErr);
+        }
+      }
+
+      const customerName = (resolvedCustomer.name || resolvedCustomer.responsible || "").trim();
+      if (!customerName) {
+        return res.status(400).json({ error: "Falta a informação: Nome do Cliente / Razão Social. Verifique o cadastro do cliente." });
       }
 
       const ASAAS_API_KEY = (process.env.ASAAS_API_KEY || "").trim().replace(/^[`'"]+|[`'"]+$/g, "");
@@ -826,15 +845,14 @@ async function startServer() {
         return res.status(500).json({ error: "Integração Asaas não configurada no servidor (ASAAS_API_KEY ausente)." });
       }
 
-      // 1. Sanitize customer data
-      const cleanCpf = (customer.cpf || "").replace(/\D/g, "");
-      const cleanPhone = (customer.phone || "").replace(/\D/g, "");
-      const cleanEmail = (customer.email || "").trim() || `cliente_${cleanCpf}@animasystem.com.br`;
-      const customerName = customer.name.trim();
+      // 2. Sanitize customer data
+      const rawCpf = (resolvedCustomer.cpf || resolvedCustomer.cnpj || "").replace(/\D/g, "");
+      const cleanPhone = (resolvedCustomer.phone || "").replace(/\D/g, "");
+      const cleanEmail = (resolvedCustomer.email || "").trim() || (rawCpf ? `cliente_${rawCpf}@animasystem.com.br` : `cliente_${Date.now()}@animasystem.com.br`);
 
-      if (cleanCpf.length !== 11) {
-        return res.status(400).json({ error: "CPF inválido. Deve conter 11 dígitos numéricos." });
-      }
+      // Check if CPF is valid (11 digits, not all same digits) or CNPJ (14 digits)
+      const isValidCpfCnpj = (rawCpf.length === 11 || rawCpf.length === 14) && !/^(\d)\1+$/.test(rawCpf);
+      const cleanCpf = isValidCpfCnpj ? rawCpf : "";
 
       const asaasHeaders = {
         "access_token": ASAAS_API_KEY,
@@ -844,32 +862,46 @@ async function startServer() {
       // 2. Identify or Create Customer in Asaas Sandbox
       let asaasCustomerId: string | null = null;
       try {
-        const searchCustomerUrl = getAsaasApiUrl("/customers", { cpfCnpj: cleanCpf });
-        console.log(`[Asaas Sandbox] Searching customer: ${searchCustomerUrl}`);
+        const searchParams: Record<string, string> = {};
+        if (cleanCpf) {
+          searchParams.cpfCnpj = cleanCpf;
+        } else if (cleanEmail && !cleanEmail.includes("@animasystem.com.br")) {
+          searchParams.email = cleanEmail;
+        }
 
-        const searchCustomerRes = await fetch(searchCustomerUrl, {
-          method: "GET",
-          headers: asaasHeaders
-        });
+        if (Object.keys(searchParams).length > 0) {
+          const searchCustomerUrl = getAsaasApiUrl("/customers", searchParams);
+          console.log(`[Asaas Sandbox] Searching customer: ${searchCustomerUrl}`);
 
-        if (searchCustomerRes.ok) {
-          const searchData: any = await searchCustomerRes.json();
-          if (searchData.data && searchData.data.length > 0) {
-            asaasCustomerId = searchData.data[0].id;
-            console.log(`[Asaas Sandbox] Existing customer found: ${asaasCustomerId}, syncing updated name: ${customerName}`);
-            
-            // Update customer on Asaas with current checkout details
-            const updateCustomerUrl = getAsaasApiUrl(`/customers/${asaasCustomerId}`);
-            await fetch(updateCustomerUrl, {
-              method: "POST",
-              headers: asaasHeaders,
-              body: JSON.stringify({
+          const searchCustomerRes = await fetch(searchCustomerUrl, {
+            method: "GET",
+            headers: asaasHeaders
+          });
+
+          if (searchCustomerRes.ok) {
+            const searchData: any = await searchCustomerRes.json();
+            if (searchData.data && searchData.data.length > 0) {
+              asaasCustomerId = searchData.data[0].id;
+              console.log(`[Asaas Sandbox] Existing customer found: ${asaasCustomerId}, syncing name: ${customerName}`);
+              
+              // Update customer on Asaas with current checkout details
+              const updateCustomerUrl = getAsaasApiUrl(`/customers/${asaasCustomerId}`);
+              const updatePayload: any = {
                 name: customerName,
-                email: cleanEmail,
-                mobilePhone: cleanPhone || undefined,
-                phone: cleanPhone || undefined
-              })
-            }).catch(err => console.warn("Could not update Asaas customer details:", err));
+                email: cleanEmail
+              };
+              if (cleanPhone && cleanPhone.length >= 10) {
+                updatePayload.mobilePhone = cleanPhone;
+              }
+              if (cleanCpf) {
+                updatePayload.cpfCnpj = cleanCpf;
+              }
+              await fetch(updateCustomerUrl, {
+                method: "POST",
+                headers: asaasHeaders,
+                body: JSON.stringify(updatePayload)
+              }).catch(err => console.warn("Could not update Asaas customer details:", err));
+            }
           }
         }
       } catch (err: any) {
@@ -880,24 +912,45 @@ async function startServer() {
         const createCustomerUrl = getAsaasApiUrl("/customers");
         console.log(`[Asaas Sandbox] Creating new customer: ${createCustomerUrl}`);
 
-        const createCustomerRes = await fetch(createCustomerUrl, {
+        const newCustPayload: any = {
+          name: customerName,
+          email: cleanEmail,
+          notificationDisabled: false
+        };
+        if (cleanPhone && cleanPhone.length >= 10) {
+          newCustPayload.mobilePhone = cleanPhone;
+          newCustPayload.phone = cleanPhone;
+        }
+        if (cleanCpf) {
+          newCustPayload.cpfCnpj = cleanCpf;
+        }
+
+        let createCustomerRes = await fetch(createCustomerUrl, {
           method: "POST",
           headers: asaasHeaders,
-          body: JSON.stringify({
-            name: customerName,
-            cpfCnpj: cleanCpf,
-            email: cleanEmail,
-            mobilePhone: cleanPhone || undefined,
-            phone: cleanPhone || undefined,
-            notificationDisabled: false
-          })
+          body: JSON.stringify(newCustPayload)
         });
 
         if (!createCustomerRes.ok) {
           const errData: any = await createCustomerRes.json().catch(() => ({}));
           console.error("Asaas create customer failed:", errData);
-          const errorMsg = errData.errors?.[0]?.description || "Não foi possível registrar o cliente no Asaas.";
-          return res.status(400).json({ error: errorMsg });
+          
+          // If failed due to cpfCnpj or invalid email format, retry with minimal safe payload
+          if (newCustPayload.cpfCnpj || (errData.errors && errData.errors.some((e: any) => e.code === "invalid_cpfCnpj" || e.code === "invalid_email"))) {
+            console.log("[Asaas Sandbox] Retrying customer creation with safe payload...");
+            delete newCustPayload.cpfCnpj;
+            createCustomerRes = await fetch(createCustomerUrl, {
+              method: "POST",
+              headers: asaasHeaders,
+              body: JSON.stringify(newCustPayload)
+            });
+          }
+
+          if (!createCustomerRes.ok) {
+            const finalErr: any = await createCustomerRes.json().catch(() => ({}));
+            const errorMsg = finalErr.errors?.[0]?.description || errData.errors?.[0]?.description || "Não foi possível registrar o cliente no Asaas.";
+            return res.status(400).json({ error: errorMsg });
+          }
         }
 
         const newCustomerData: any = await createCustomerRes.json();
@@ -1042,7 +1095,25 @@ async function startServer() {
       checkoutUrl = checkoutUrl.trim().replace(/^http:\/\//i, "https://");
       console.log(`[Asaas Sandbox] Generated checkout URL: ${checkoutUrl}`);
 
-      // 6. Record Order in Firestore
+      // 6. Retrieve Asaas PIX QR Code if payment was created
+      let asaasPixQrCode: string | null = null;
+      let asaasPixCopyPaste: string | null = null;
+      if (asaasPaymentId) {
+        try {
+          const pixQrUrl = getAsaasApiUrl(`/payments/${asaasPaymentId}/pixQrCode`);
+          const pixRes = await fetch(pixQrUrl, { headers: asaasHeaders });
+          if (pixRes.ok) {
+            const pixData: any = await pixRes.json();
+            asaasPixQrCode = pixData.encodedImage || null;
+            asaasPixCopyPaste = pixData.payload || null;
+            console.log(`[Asaas Sandbox] PIX QR Code generated for payment ${asaasPaymentId}`);
+          }
+        } catch (pixErr) {
+          console.warn("Could not fetch Asaas PIX QR code:", pixErr);
+        }
+      }
+
+      // 7. Record Order in Firestore
       const orderDoc = {
         orderId,
         userId: userId || null,
@@ -1059,6 +1130,8 @@ async function startServer() {
         asaasCustomerId,
         asaasPaymentId,
         asaasSubscriptionId,
+        asaasPixQrCode,
+        asaasPixCopyPaste,
         amount: Number(finalAmount.toFixed(2)),
         billingType: "UNDEFINED",
         status: "pending",
@@ -1073,7 +1146,7 @@ async function startServer() {
         console.error("Error saving order to Firestore:", firestoreErr);
       }
 
-      // 7. Also record Lead in Firestore for CRM dashboard
+      // 8. Also record Lead in Firestore for CRM dashboard
       try {
         const effectiveOwnerUid = ownerId || "6rbybX9mBAMp8B6gS3zQ8rT0hW32";
         await addDoc(collection(db, "leads"), {
@@ -1091,16 +1164,154 @@ async function startServer() {
         console.error("Error recording lead in Firestore:", leadErr);
       }
 
-      // 8. Return secure safe response to frontend
+      // 9. Return secure safe response to frontend
       return res.json({
         success: true,
         checkoutUrl,
-        orderId
+        orderId,
+        asaasPaymentId,
+        asaasCustomerId,
+        pixQrCode: asaasPixQrCode,
+        pixCopyPaste: asaasPixCopyPaste
       });
 
     } catch (error: any) {
       console.error("Error in Asaas checkout endpoint:", error);
       return res.status(500).json({ error: "Não foi possível iniciar o pagamento. Tente novamente." });
+    }
+  });
+
+  // Direct Credit Card Payment Endpoint (Embedded in App - No redirection)
+  app.post("/api/asaas/pay-credit-card", async (req, res) => {
+    try {
+      const { 
+        orderId, 
+        paymentId, 
+        creditCard, 
+        creditCardHolderInfo,
+        installmentCount 
+      } = req.body;
+
+      if (!creditCard || !creditCard.number || !creditCard.holderName || !creditCard.expiryMonth || !creditCard.expiryYear || !creditCard.ccv) {
+        return res.status(400).json({ error: "Por favor, preencha todos os dados do cartão de crédito." });
+      }
+
+      if (!orderId && !paymentId) {
+        return res.status(400).json({ error: "Identificador do pedido/pagamento não fornecido." });
+      }
+
+      const ASAAS_API_KEY = (process.env.ASAAS_API_KEY || "").trim().replace(/^[`'"]+|[`'"]+$/g, "");
+      if (!ASAAS_API_KEY) {
+        return res.status(500).json({ error: "Chave Asaas não configurada no servidor." });
+      }
+
+      const asaasHeaders = {
+        "Content-Type": "application/json",
+        "access_token": ASAAS_API_KEY
+      };
+
+      // Retrieve order to get asaasPaymentId and customer details
+      let targetPaymentId = paymentId;
+      let orderDocSnap: any = null;
+      let orderData: any = null;
+
+      if (orderId) {
+        const q = query(collection(db, "orders"), where("orderId", "==", orderId));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          orderDocSnap = snap.docs[0];
+          orderData = orderDocSnap.data();
+          targetPaymentId = targetPaymentId || orderData.asaasPaymentId;
+        }
+      }
+
+      if (!targetPaymentId) {
+        return res.status(400).json({ error: "Fatura do Asaas não encontrada para este pedido." });
+      }
+
+      // Format card details
+      const cleanCardNumber = String(creditCard.number).replace(/\D/g, "");
+      const cleanCcv = String(creditCard.ccv).replace(/\D/g, "");
+      const expiryMonth = String(creditCard.expiryMonth).padStart(2, "0");
+      let expiryYear = String(creditCard.expiryYear).trim();
+      if (expiryYear.length === 2) expiryYear = `20${expiryYear}`;
+
+      const holderCpfCnpj = (creditCardHolderInfo?.cpfCnpj || orderData?.customerCpf || "").replace(/\D/g, "");
+      const holderPhone = (creditCardHolderInfo?.phone || creditCardHolderInfo?.mobilePhone || orderData?.customerPhone || "").replace(/\D/g, "");
+      const holderEmail = (creditCardHolderInfo?.email || orderData?.customerEmail || "").trim();
+      const holderPostalCode = (creditCardHolderInfo?.postalCode || "01310100").replace(/\D/g, "");
+      const holderAddressNumber = creditCardHolderInfo?.addressNumber || "100";
+
+      const cardPayload: any = {
+        creditCard: {
+          holderName: creditCard.holderName.trim(),
+          number: cleanCardNumber,
+          expiryMonth: expiryMonth,
+          expiryYear: expiryYear,
+          ccv: cleanCcv
+        },
+        creditCardHolderInfo: {
+          name: creditCard.holderName.trim(),
+          email: holderEmail || "cliente@animasystem.com.br",
+          cpfCnpj: holderCpfCnpj || "00000000000",
+          postalCode: holderPostalCode,
+          addressNumber: holderAddressNumber,
+          phone: holderPhone || "11999999999",
+          mobilePhone: holderPhone || "11999999999"
+        }
+      };
+
+      if (installmentCount && Number(installmentCount) > 1) {
+        cardPayload.installmentCount = Number(installmentCount);
+      }
+
+      const payCardUrl = getAsaasApiUrl(`/payments/${targetPaymentId}/payWithCreditCard`);
+      console.log(`[Asaas Sandbox] Processing direct credit card payment for: ${payCardUrl}`);
+
+      const payCardRes = await fetch(payCardUrl, {
+        method: "POST",
+        headers: asaasHeaders,
+        body: JSON.stringify(cardPayload)
+      });
+
+      const payCardData: any = await payCardRes.json().catch(() => ({}));
+
+      if (!payCardRes.ok) {
+        console.error("Asaas credit card payment failed:", payCardData);
+        const errMsg = payCardData.errors?.[0]?.description || "O pagamento com cartão foi recusado pela operadora. Verifique os dados ou limite.";
+        return res.status(400).json({ error: errMsg });
+      }
+
+      console.log("[Asaas Sandbox] Direct card payment success:", payCardData.status || "CONFIRMED");
+
+      // Update Order document in Firestore
+      if (orderDocSnap) {
+        try {
+          await updateDoc(doc(db, "orders", orderDocSnap.id), {
+            status: "paid",
+            asaasPaymentStatus: payCardData.status || "CONFIRMED",
+            billingType: "CREDIT_CARD",
+            paidAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+
+          // Process into Dashboard & Clients
+          await processConfirmedAsaasPayment(orderData, payCardData);
+        } catch (dbErr) {
+          console.error("Error updating order after card payment:", dbErr);
+        }
+      }
+
+      return res.json({
+        success: true,
+        status: "paid",
+        paymentId: targetPaymentId,
+        orderId: orderId || orderData?.orderId
+      });
+
+    } catch (err: any) {
+      console.error("Error processing embedded credit card payment:", err);
+      return res.status(500).json({ error: err.message || "Erro ao processar cartão de crédito. Tente novamente." });
     }
   });
 
