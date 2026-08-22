@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   ShoppingCart, Trash2, ArrowLeft, Check, QrCode, Copy, 
   ShieldCheck, CheckCircle2, Building, User, FileText, Globe, 
-  Tag, ChevronLeft, ChevronRight, Info, Plus, Sparkles, Headphones, Server, Zap, X, ArrowRight, Lock, Phone, Mail, ExternalLink, CreditCard
+  Tag, ChevronLeft, ChevronRight, Info, Plus, Sparkles, Headphones, Server, Zap, X, ArrowRight, Lock, Phone, Mail, ExternalLink, CreditCard, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, addDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
@@ -171,15 +171,13 @@ export default function CheckoutView() {
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pixCopySuccess, setPixCopySuccess] = useState(false);
-
-  const [activeAsaasPaymentId, setActiveAsaasPaymentId] = useState<string | null>(null);
-  const [ccNumber, setCcNumber] = useState('');
   const [ccName, setCcName] = useState('');
+  const [ccNumber, setCcNumber] = useState('');
   const [ccExpiry, setCcExpiry] = useState('');
-  const [ccCcv, setCcCcv] = useState('');
+  const [ccCvv, setCcCvv] = useState('');
   const [ccInstallments, setCcInstallments] = useState(1);
-  const [isProcessingCc, setIsProcessingCc] = useState(false);
-  const [ccFeedback, setCcFeedback] = useState<{type: 'error'|'success', msg: string} | null>(null);
+  const [isProcessingCC, setIsProcessingCC] = useState(false);
+  const [ccError, setCcError] = useState('');
 
   const pixKey = '24981000306';
 
@@ -430,6 +428,59 @@ export default function CheckoutView() {
   }, [clientIdParam, isRenewal]);
 
   // Core function to generate Asaas Checkout URL
+  const handleCreditCardSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isProcessingCC) return;
+    setIsProcessingCC(true);
+    setCcError('');
+
+    try {
+      const effName = (leadName || clientInfo?.responsible || clientInfo?.name || clientInfo?.companyRazaoSocial || '').trim();
+      const rawCpf = (leadCpf || clientInfo?.cpf || clientInfo?.cnpj || clientInfo?.companyCnpj || '').replace(/\D/g, '');
+      const rawPhone = (leadPhone || clientInfo?.phone || clientInfo?.companyPhone || '').replace(/\D/g, '');
+      const rawEmail = (leadEmail || clientInfo?.email || clientInfo?.companyEmail || '').trim();
+      const cleanEmail = rawEmail || `cliente_${rawCpf || Date.now()}@animasystem.com.br`;
+
+      const response = await fetch('/api/asaas/pay-credit-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: activeOrderId,
+          creditCard: {
+            holderName: ccName,
+            number: ccNumber,
+            expiryMonth: ccExpiry.split('/')[0]?.trim() || '',
+            expiryYear: ccExpiry.split('/')[1]?.trim() || '',
+            ccv: ccCvv
+          },
+          creditCardHolderInfo: {
+            name: effName || 'Cliente AnimaSystem',
+            email: cleanEmail,
+            cpfCnpj: rawCpf || '00000000000',
+            phone: rawPhone || '11999999999',
+            postalCode: '01310100',
+            addressNumber: '100'
+          },
+          installmentCount: ccInstallments
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setCcError(data.error || 'Ocorreu um erro ao processar o cartão.');
+        setIsProcessingCC(false);
+        return;
+      }
+
+      setIsPaymentConfirmed(true);
+      setActivePaymentTab('pix');
+    } catch (err: any) {
+      setCcError(err.message || 'Falha de comunicação. Tente novamente.');
+    } finally {
+      setIsProcessingCC(false);
+    }
+  };
+
   const generateAsaasCheckout = async (name: string, email: string, phone: string, cpf: string) => {
     setIsSubmittingLead(true);
     setLeadError('');
@@ -486,9 +537,6 @@ export default function CheckoutView() {
         }
         if (data.pixCopyPaste) {
           setAsaasPixCopyPaste(data.pixCopyPaste);
-        }
-        if (data.asaasPaymentId) {
-          setActiveAsaasPaymentId(data.asaasPaymentId);
         }
         if (data.orderId) {
           setActiveOrderId(data.orderId);
@@ -567,70 +615,6 @@ export default function CheckoutView() {
     await generateAsaasCheckout(leadName, leadEmail, cleanPhone, cleanCpf);
   };
 
-  // Handler for Native Credit Card Payment
-  const handleCreditCardSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCcFeedback(null);
-    setIsProcessingCc(true);
-
-    try {
-      const ccData = {
-        number: ccNumber.replace(/\D/g, ''),
-        holderName: ccName.trim(),
-        expiryMonth: ccExpiry.split('/')[0]?.trim() || '',
-        expiryYear: ccExpiry.split('/')[1]?.trim() || '',
-        ccv: ccCcv.replace(/\D/g, '')
-      };
-
-      if (!ccData.number || !ccData.holderName || !ccData.expiryMonth || !ccData.expiryYear || !ccData.ccv) {
-        setCcFeedback({ type: 'error', msg: 'Por favor, preencha todos os campos do cartão.' });
-        setIsProcessingCc(false);
-        return;
-      }
-
-      const holderCpfCnpj = (leadCpf || clientInfo?.cpf || clientInfo?.cnpj || clientInfo?.companyCnpj || '').replace(/\D/g, '');
-      const holderPhone = (leadPhone || clientInfo?.phone || clientInfo?.companyPhone || '').replace(/\D/g, '');
-      const holderEmail = (leadEmail || clientInfo?.email || clientInfo?.companyEmail || '').trim();
-
-      const response = await fetch('/api/asaas/pay-credit-card', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: activeOrderId || undefined,
-          paymentId: activeAsaasPaymentId || undefined,
-          creditCard: ccData,
-          creditCardHolderInfo: {
-            name: ccData.holderName,
-            email: holderEmail || undefined,
-            cpfCnpj: holderCpfCnpj || undefined,
-            phone: holderPhone || undefined
-          },
-          installmentCount: ccInstallments
-        })
-      });
-
-      let resData: any = {};
-      try {
-        resData = await response.json();
-      } catch (parseErr) {}
-
-      if (response.ok && resData.success) {
-        setCcFeedback({ type: 'success', msg: 'Pagamento aprovado com sucesso!' });
-        setIsPaymentConfirmed(true);
-        setTimeout(() => {
-          setIsPaymentModalOpen(false);
-          navigate('/admin-cliente');
-        }, 2500);
-      } else {
-        setCcFeedback({ type: 'error', msg: resData.error || 'O pagamento foi recusado. Verifique os dados ou o limite do cartão.' });
-      }
-    } catch (err: any) {
-      setCcFeedback({ type: 'error', msg: err.message || 'Erro de conexão ao processar o cartão.' });
-    } finally {
-      setIsProcessingCc(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#F4F5F8] text-zinc-900 font-sans pb-24 selection:bg-[#D7FE03] selection:text-black">
       
@@ -669,62 +653,6 @@ export default function CheckoutView() {
             {isRenewal ? 'Renovação de Hospedagem' : 'Meu carrinho'} <span className="text-[#0c0d0e] font-black">({cartItems.length})</span>
           </h1>
         </div>
-
-        {/* Client Identification & Branding Card */}
-        {clientInfo && (
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-8 p-4 sm:p-6 rounded-3xl bg-white border border-zinc-200/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 relative overflow-hidden"
-          >
-            <div className="flex items-center gap-4 flex-1 min-w-0">
-              {clientInfo.logoUrl ? (
-                <div className="w-16 h-16 rounded-2xl overflow-hidden bg-zinc-50 border border-zinc-200/80 shrink-0 p-1.5 flex items-center justify-center shadow-xs">
-                  <img 
-                    src={clientInfo.logoUrl} 
-                    alt={clientInfo.name} 
-                    className="w-full h-full object-contain" 
-                  />
-                </div>
-              ) : (
-                <div className="w-16 h-16 rounded-2xl bg-[#0c0d0e] text-[#D7FE03] font-black text-lg flex items-center justify-center shrink-0 shadow-xs uppercase tracking-tight">
-                  {clientInfo.logoInitials || (clientInfo.name ? clientInfo.name.substring(0, 2) : 'AS')}
-                </div>
-              )}
-
-              <div className="space-y-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/80">
-                    Ambiente Seguro de Renovação
-                  </span>
-                  {clientInfo.domain && (
-                    <span className="text-[11px] font-semibold text-zinc-500 inline-flex items-center gap-1">
-                      <Globe className="w-3.5 h-3.5 text-zinc-400" />
-                      {clientInfo.domain}
-                    </span>
-                  )}
-                </div>
-                <h2 className="text-lg sm:text-xl font-extrabold text-zinc-900 leading-snug truncate">
-                  {clientInfo.name}
-                </h2>
-                <p className="text-xs text-zinc-500">
-                  {clientInfo.responsible ? `Responsável: ${clientInfo.responsible} • ` : ''}
-                  Plano Contratado: <strong className="text-zinc-800 font-bold">{clientInfo.plan || 'Profissional'}</strong>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex sm:flex-col items-center sm:items-end gap-2 bg-zinc-50 sm:bg-transparent p-3 sm:p-0 rounded-2xl border sm:border-0 border-zinc-100 w-full sm:w-auto justify-between shrink-0">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold shadow-2xs">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>Identidade Verificada</span>
-              </div>
-              <span className="text-[10px] text-zinc-400 font-medium text-right hidden sm:block">
-                Liberação e renovação instantânea
-              </span>
-            </div>
-          </motion.div>
-        )}
 
         {/* 2-Column Checkout Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -1198,7 +1126,7 @@ export default function CheckoutView() {
                           }`}
                         >
                           <CreditCard className="w-3.5 h-3.5" />
-                          <span>Cartão de Crédito</span>
+                          <span>Cartão / Boleto / Asaas</span>
                         </button>
                       </div>
 
@@ -1258,7 +1186,7 @@ export default function CheckoutView() {
                                   />
                                 ) : (
                                   <div className="w-44 h-44 bg-zinc-100 flex flex-col items-center justify-center rounded-lg p-3 text-center space-y-2">
-                                    <QrCode className="w-10 h-10 text-zinc-400 animate-pulse" />
+                                    <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
                                     <span className="text-[11px] text-zinc-500 font-medium">Gerando QR Code PIX Asaas...</span>
                                   </div>
                                 )}
@@ -1332,7 +1260,7 @@ export default function CheckoutView() {
                                   onClick={() => setActivePaymentTab('asaas_page')}
                                   className="text-xs text-zinc-600 hover:text-zinc-900 font-semibold underline flex items-center gap-1"
                                 >
-                                  Prefiro pagar com Cartão de Crédito
+                                  Prefiro pagar com Cartão de Crédito ou Boleto
                                 </button>
                               </div>
                             </div>
@@ -1354,144 +1282,172 @@ export default function CheckoutView() {
                         </div>
                       </div>
                     ) : (
-                      /* Aba Cartão de Crédito Nativo */
-                      <div className="min-h-full flex items-center justify-center p-4 sm:p-8">
-                        <div className="w-full max-w-2xl bg-white border border-zinc-200/80 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+                      /* Aba de Visualização do Asaas (Native Credit Card Checkout) */
+                      <div className="w-full h-full bg-[#F3F4F6] overflow-y-auto">
+                        
+                        {/* Asaas Blue Header Mimic */}
+                        <div className="bg-[#0230A5] text-white p-6 sm:p-8">
+                          <div className="max-w-2xl mx-auto space-y-4">
+                            <div>
+                              <h2 className="text-xl sm:text-2xl font-bold">{leadName || clientInfo?.responsible || clientInfo?.name || 'Cliente'}</h2>
+                              <p className="text-blue-100 font-mono text-sm">{formatCpf(leadCpf || clientInfo?.cpf || clientInfo?.cnpj || '')}</p>
+                            </div>
+                            
+                            <div className="text-sm text-blue-100 space-y-1">
+                              <p>{leadEmail || clientInfo?.email || 'Nenhum email fornecido'}</p>
+                              <p>{formatPhone(leadPhone || clientInfo?.phone || '')}</p>
+                            </div>
+
+                            <div className="pt-2 border-t border-blue-800/50 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                                <span className="text-sm font-medium">Aguardando Pagamento</span>
+                              </div>
+                              <a href={generatedCheckoutUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-200 underline hover:text-white">
+                                Visualizar Boleto original
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Asaas Body Content */}
+                        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6 pb-20">
                           
-                          <div className="text-center space-y-1">
-                            <h3 className="text-2xl font-black text-zinc-900 tracking-tight">
-                              Pagamento com Cartão
-                            </h3>
-                            <p className="text-xs text-zinc-500 max-w-md mx-auto">
-                              Insira os dados do seu cartão de crédito para finalizar a compra de forma segura.
-                            </p>
+                          <h3 className="text-lg font-medium text-zinc-800">Dados da fatura - {activeOrderId || 'AS-RENOVACAO'}</h3>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-sm space-y-2">
+                              <span className="text-xs text-zinc-600 font-semibold block">Valor total</span>
+                              <span className="text-2xl font-bold text-[#0230A5]">R$ {total.toFixed(2).replace('.', ',')}</span>
+                            </div>
+                            <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-sm space-y-2">
+                              <span className="text-xs text-zinc-600 font-semibold block">Data de vencimento</span>
+                              <span className="text-xl font-bold text-[#0230A5]">{new Date().toLocaleDateString('pt-BR')}</span>
+                              <span className="text-[10px] text-zinc-400 block">(hoje)</span>
+                            </div>
                           </div>
 
-                          {ccFeedback && (
-                            <div className={`p-4 rounded-2xl text-xs flex items-start gap-3 ${
-                              ccFeedback.type === 'error' ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                            }`}>
-                              <Info className={`w-4 h-4 shrink-0 mt-0.5 ${ccFeedback.type === 'error' ? 'text-red-600' : 'text-emerald-600'}`} />
-                              <div className="flex-1">
-                                <span>{ccFeedback.msg}</span>
-                              </div>
-                            </div>
-                          )}
+                          <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-sm space-y-2">
+                            <span className="text-xs text-zinc-600 font-semibold block">Descrição</span>
+                            <p className="text-sm text-zinc-800">Pedido {activeOrderId || 'AS-RENOVACAO'} - {planDetails[planParam]?.name}</p>
+                          </div>
 
-                          <form onSubmit={handleCreditCardSubmit} className="space-y-4">
-                            <div>
-                              <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Número do Cartão</label>
-                              <div className="relative">
-                                <CreditCard className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                                <input
-                                  type="text"
+                          {/* Credit Card Form */}
+                          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-zinc-200/80 shadow-sm">
+                            <div className="flex items-center gap-3 mb-6">
+                              <CreditCard className="w-6 h-6 text-zinc-900" />
+                              <h3 className="text-lg font-bold text-zinc-900">Pagamento com Cartão</h3>
+                            </div>
+
+                            <form onSubmit={handleCreditCardSubmit} className="space-y-4">
+                              {ccError && (
+                                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl">
+                                  {ccError}
+                                </div>
+                              )}
+                              
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-zinc-700">Número do Cartão</label>
+                                <input 
+                                  type="text" 
                                   required
                                   placeholder="0000 0000 0000 0000"
+                                  maxLength={19}
                                   value={ccNumber}
-                                  onChange={e => {
-                                    let val = e.target.value.replace(/\D/g, '').substring(0, 16);
-                                    val = val.replace(/(\d{4})/g, '$1 ').trim();
-                                    setCcNumber(val);
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '').slice(0, 16);
+                                    const formatted = val.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+                                    setCcNumber(formatted);
                                   }}
-                                  className="w-full bg-zinc-50 border border-zinc-300 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors"
+                                  className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 rounded-xl text-sm outline-none focus:border-zinc-400 focus:bg-white transition-all font-mono"
                                 />
                               </div>
-                            </div>
 
-                            <div>
-                              <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Nome do Titular (como impresso)</label>
-                              <input
-                                type="text"
-                                required
-                                placeholder="NOME DO TITULAR"
-                                value={ccName}
-                                onChange={e => setCcName(e.target.value.toUpperCase())}
-                                className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors uppercase"
-                              />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Validade</label>
-                                <input
-                                  type="text"
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-zinc-700">Nome Impresso no Cartão</label>
+                                <input 
+                                  type="text" 
                                   required
-                                  placeholder="MM/AA"
-                                  value={ccExpiry}
-                                  onChange={e => {
-                                    let val = e.target.value.replace(/\D/g, '').substring(0, 4);
-                                    if (val.length >= 2) {
-                                      val = `${val.substring(0, 2)}/${val.substring(2)}`;
-                                    }
-                                    setCcExpiry(val);
-                                  }}
-                                  className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors"
+                                  placeholder="NOME COMPLETO"
+                                  value={ccName}
+                                  onChange={(e) => setCcName(e.target.value.toUpperCase())}
+                                  className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 rounded-xl text-sm outline-none focus:border-zinc-400 focus:bg-white transition-all uppercase"
                                 />
                               </div>
-                              <div>
-                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">CVV</label>
-                                <input
-                                  type="text"
-                                  required
-                                  placeholder="123"
-                                  value={ccCcv}
-                                  onChange={e => setCcCcv(e.target.value.replace(/\D/g, '').substring(0, 4))}
-                                  className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors"
-                                />
-                              </div>
-                            </div>
 
-                            {/* Only allow installments if total is greater than 100 */}
-                            {total >= 50 && (
-                              <div>
-                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Parcelamento</label>
-                                <select
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                  <label className="text-xs font-bold text-zinc-700">Validade</label>
+                                  <input 
+                                    type="text" 
+                                    required
+                                    placeholder="MM/AA"
+                                    maxLength={5}
+                                    value={ccExpiry}
+                                    onChange={(e) => {
+                                      let val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                      if (val.length >= 2) val = val.slice(0,2) + '/' + val.slice(2);
+                                      setCcExpiry(val);
+                                    }}
+                                    className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 rounded-xl text-sm outline-none focus:border-zinc-400 focus:bg-white transition-all font-mono text-center"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-xs font-bold text-zinc-700">CVV</label>
+                                  <input 
+                                    type="text" 
+                                    required
+                                    placeholder="123"
+                                    maxLength={4}
+                                    value={ccCvv}
+                                    onChange={(e) => setCcCvv(e.target.value.replace(/\D/g, ''))}
+                                    className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 rounded-xl text-sm outline-none focus:border-zinc-400 focus:bg-white transition-all font-mono text-center"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-zinc-700">Parcelamento</label>
+                                <select 
                                   value={ccInstallments}
-                                  onChange={e => setCcInstallments(Number(e.target.value))}
-                                  className="w-full bg-zinc-50 border border-zinc-300 rounded-xl px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none transition-colors appearance-none cursor-pointer"
+                                  onChange={(e) => setCcInstallments(Number(e.target.value))}
+                                  className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 rounded-xl text-sm outline-none focus:border-zinc-400 focus:bg-white transition-all font-medium text-zinc-700"
                                 >
-                                  {Array.from({ length: total >= 300 ? 6 : (total >= 150 ? 3 : 2) }, (_, i) => i + 1).map(num => (
+                                  <option value={1}>1x de R$ {total.toFixed(2).replace('.', ',')}</option>
+                                  {[2, 3, 4, 5, 6].map(num => (
                                     <option key={num} value={num}>
-                                      {num}x de R$ {(total / num).toFixed(2).replace('.', ',')}
+                                      {num}x de R$ {(total / num).toFixed(2).replace('.', ',')} sem juros
                                     </option>
                                   ))}
                                 </select>
                               </div>
-                            )}
 
-                            <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                              <div className="flex items-center gap-1 font-mono text-[11px] text-zinc-400 order-2 sm:order-1">
-                                <Lock className="w-3 h-3" />
-                                <span>SSL 256-Bit</span>
-                              </div>
-
-                              <div className="flex w-full sm:w-auto items-center gap-2 order-1 sm:order-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setActivePaymentTab('pix')}
-                                  className="px-4 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold text-xs rounded-xl transition-colors"
-                                  disabled={isProcessingCc}
-                                >
-                                  Voltar
-                                </button>
+                              <div className="pt-4 flex flex-col gap-3">
                                 <button
                                   type="submit"
-                                  disabled={isProcessingCc}
-                                  className="flex-1 sm:flex-none px-6 py-3 bg-zinc-900 hover:bg-black text-[#D7FE03] font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                  disabled={isProcessingCC || !ccNumber || !ccName || !ccExpiry || !ccCvv}
+                                  className="w-full py-4 bg-[#D7FE03] hover:bg-[#c4e602] text-black font-black text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                  {isProcessingCc ? (
+                                  {isProcessingCC ? (
                                     <>
-                                      <div className="w-4 h-4 border-2 border-[#D7FE03] border-t-transparent rounded-full animate-spin" />
+                                      <Loader2 className="w-5 h-5 animate-spin" />
                                       <span>Processando...</span>
                                     </>
                                   ) : (
                                     <span>Pagar R$ {total.toFixed(2).replace('.', ',')}</span>
                                   )}
                                 </button>
+                                
+                                <button
+                                  type="button"
+                                  onClick={() => setActivePaymentTab('pix')}
+                                  className="w-full py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs rounded-xl transition-colors"
+                                >
+                                  Voltar para PIX Automático
+                                </button>
                               </div>
-                            </div>
-                          </form>
-
+                            </form>
+                          </div>
                         </div>
                       </div>
                     )}

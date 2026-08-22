@@ -225,6 +225,20 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
     setGcpDiagnostic(null);
     setGcpMetrics(null);
 
+    // Sync BigQuery billing data first (financeiro)
+    try {
+      const bqProjectId = localStorage.getItem('bqProjectId');
+      const bqDatasetId = localStorage.getItem('bqDatasetId');
+      const bqTableId = localStorage.getItem('bqTableId');
+      
+      if (bqProjectId && bqDatasetId && bqTableId) {
+        const url = `/api/gcp/billing-sync-bigquery?bqProjectId=${encodeURIComponent(bqProjectId)}&bqDatasetId=${encodeURIComponent(bqDatasetId)}&bqTableId=${encodeURIComponent(bqTableId)}`;
+        await fetch(url);
+      }
+    } catch (err) {
+      console.error("Erro na sincronização BQ:", err);
+    }
+
     let fetchedGcp = null;
     let fetchedReal: any[] = [];
     let currentError = null;

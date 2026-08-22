@@ -753,47 +753,6 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                     {client.dueDate ? `Todo dia ${client.dueDate}` : 'Não definido'}
                   </span>
                 </div>
-                <div>
-                  <span className="block text-sm text-zinc-500 mb-1">Próxima Renovação</span>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={cn(
-                      "font-mono font-semibold text-sm",
-                      isClientRenewalAlert(client) ? "text-rose-600 font-bold" : "text-zinc-800"
-                    )}>
-                      {formatClientRenewalDate(client)}
-                    </span>
-                    {isClientRenewalAlert(client) && (
-                      <span 
-                        className={cn(
-                          "inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold",
-                          getClientDaysUntilRenewal(client) <= 0 
-                            ? "bg-rose-100 text-rose-700 border border-rose-200" 
-                            : "bg-amber-100 text-amber-800 border border-amber-200"
-                        )}
-                      >
-                        {getClientDaysUntilRenewal(client) <= 0 ? "Vencido" : `${getClientDaysUntilRenewal(client)} dias restantes`}
-                      </span>
-                    )}
-
-                    <button
-                      onClick={handleCopyRenewalLink}
-                      title="Copiar Link Direto de Renovação"
-                      className="inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline ml-1 cursor-pointer bg-zinc-100 hover:bg-zinc-200 px-2 py-0.5 rounded-md text-zinc-800 transition-colors"
-                    >
-                      {copiedRenewalLink ? (
-                        <>
-                          <Check className="w-3 h-3 text-emerald-600" />
-                          <span className="text-emerald-700 font-bold">Copiado!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3 text-zinc-600" />
-                          <span>Copiar Link</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
 

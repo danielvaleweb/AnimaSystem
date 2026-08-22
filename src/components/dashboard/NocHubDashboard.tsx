@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { collection, query, where, onSnapshot, getDocs, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { ClientData } from '../../types';
-import { cn } from '../../utils';
+import { cn, getClientRenewalInfo } from '../../utils';
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip as ChartTooltip
 } from 'recharts';
@@ -531,17 +531,13 @@ export function NocHubDashboard({ onNavigate }: { onNavigate: (view: any, id?: s
                   {/* Lembretes List (Slide 1 by 1) */}
                   <div className="flex-1 flex flex-col justify-center overflow-hidden relative min-h-[140px]">
                     {clients.filter(c => c.status === 'active').length > 0 ? clients.filter(c => c.status === 'active').slice(0, 5).map((client, idx) => {
-                      const today = new Date();
-                      const dueDate = new Date();
-                      dueDate.setDate(client.dueDate || (today.getDate() + idx));
-                      
-                      const isToday = dueDate.getDate() === today.getDate();
-                      const daysLeft = dueDate.getDate() - today.getDate();
+                      const renewInfo = getClientRenewalInfo(client);
+                      const daysLeft = renewInfo.days;
                       
                       let statusText = "";
                       let statusColor = "";
                       
-                      if (isToday) {
+                      if (daysLeft === 0) {
                         statusText = "Vence Hoje";
                         statusColor = "text-red-600 bg-red-50 border-red-100";
                       } else if (daysLeft < 0) {

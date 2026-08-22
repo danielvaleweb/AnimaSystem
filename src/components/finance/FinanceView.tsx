@@ -508,14 +508,7 @@ export function FinanceView({ onNavigate }: { onNavigate?: (view: any, id?: stri
           <TrendingUp className="w-4 h-4 text-[#d4ff00]" />
           Meus Investimentos
         </button>
-        <button 
-          onClick={handleSync}
-          disabled={isSyncing}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all w-full sm:w-auto text-sm cursor-pointer"
-        >
-          <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
-          {isSyncing ? "Atualizando..." : "Atualizar dados"}
-        </button>
+
         <button 
           onClick={() => setIsCouponModalOpen(true)}
           className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-900 hover:bg-black text-white font-semibold rounded-xl transition-all w-full sm:w-auto text-sm cursor-pointer shadow-sm border border-zinc-700/60"

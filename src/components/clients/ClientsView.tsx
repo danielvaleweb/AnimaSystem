@@ -339,7 +339,6 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                 <th className="font-medium p-4 pl-6">Cliente</th>
                 <th className="font-medium p-4">Plano</th>
                 <th className="font-medium p-4">Mensalidade</th>
-                <th className="font-medium p-4">Próxima Renovação</th>
                 <th className="font-medium p-4">Custo Cloud</th>
                 <th className="font-medium p-4">Status</th>
                 <th className="font-medium p-4">Firebase ID</th>
@@ -379,49 +378,6 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                   <td className="p-4">
                     <div className="text-sm font-medium text-zinc-800">R$ {client.monthlyValue.toFixed(2).replace('.', ',')}</div>
                     <div className="text-xs text-zinc-500 mt-0.5">Venc. dia {client.dueDate}</div>
-                  </td>
-                  <td className="p-4">
-                    {(() => {
-                      const renewInfo = getClientRenewalInfo(client);
-                      return (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={cn(
-                            "text-sm font-medium font-mono",
-                            renewInfo.isAutoSuspended 
-                              ? "text-rose-700 font-bold" 
-                              : renewInfo.isOverdue 
-                              ? "text-rose-600 font-bold" 
-                              : renewInfo.showWarning 
-                              ? "text-amber-600 font-semibold" 
-                              : "text-zinc-800"
-                          )}>
-                            {formatClientRenewalDate(client)}
-                          </span>
-                          {renewInfo.isAutoSuspended ? (
-                            <span 
-                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-600 text-white shadow-xs"
-                              title={`Site suspenso automaticamente (${renewInfo.overdueDays} dias de atraso)`}
-                            >
-                              Bloqueado (8d+)
-                            </span>
-                          ) : renewInfo.isOverdue ? (
-                            <span 
-                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200"
-                              title={`Vencido há ${renewInfo.overdueDays} dias. Tolerância restante: ${renewInfo.toleranceRemaining} dias`}
-                            >
-                              Vencido ({renewInfo.overdueDays}d atraso)
-                            </span>
-                          ) : renewInfo.showWarning ? (
-                            <span 
-                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200"
-                              title={`Vencimento em ${renewInfo.daysUntilDue} dias`}
-                            >
-                              {renewInfo.daysUntilDue === 0 ? "Vence hoje" : `Falta ${renewInfo.daysUntilDue}d`}
-                            </span>
-                          ) : null}
-                        </div>
-                      );
-                    })()}
                   </td>
                   <td className="p-4">
                     {(() => {
@@ -624,50 +580,6 @@ export function ClientsView({ onClientSelect, onNavigate }: { onClientSelect?: (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-zinc-500 text-xs">Plano</span>
                     <span className="text-zinc-800 font-medium h-4">{client.plan}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-zinc-500 text-xs">Próxima renovação</span>
-                    {(() => {
-                      const renewInfo = getClientRenewalInfo(client);
-                      return (
-                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                          <span className={cn(
-                            "font-medium text-xs font-mono",
-                            renewInfo.isAutoSuspended 
-                              ? "text-rose-700 font-bold" 
-                              : renewInfo.isOverdue 
-                              ? "text-rose-600 font-bold" 
-                              : renewInfo.showWarning 
-                              ? "text-amber-600 font-semibold" 
-                              : "text-zinc-800"
-                          )}>
-                            {formatClientRenewalDate(client)}
-                          </span>
-                          {renewInfo.isAutoSuspended ? (
-                            <span 
-                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-600 text-white shadow-xs"
-                              title={`Site suspenso automaticamente (${renewInfo.overdueDays} dias de atraso)`}
-                            >
-                              Bloqueado (8d+)
-                            </span>
-                          ) : renewInfo.isOverdue ? (
-                            <span 
-                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200"
-                              title={`Vencido há ${renewInfo.overdueDays} dias. Tolerância restante: ${renewInfo.toleranceRemaining} dias`}
-                            >
-                              Vencido ({renewInfo.overdueDays}d)
-                            </span>
-                          ) : renewInfo.showWarning ? (
-                            <span 
-                              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200"
-                              title={`Vencimento em ${renewInfo.daysUntilDue} dias`}
-                            >
-                              {renewInfo.daysUntilDue === 0 ? "Hoje" : `Falta ${renewInfo.daysUntilDue}d`}
-                            </span>
-                          ) : null}
-                        </div>
-                      );
-                    })()}
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-zinc-500 text-xs">Validade do domínio</span>
