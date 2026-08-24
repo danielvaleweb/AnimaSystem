@@ -157,7 +157,7 @@ async function startServer() {
         const now = new Date();
         const dueDay = Number(clientData.dueDate) || 10;
         renewalDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
-        if (now.getDate() > dueDay) {
+        if (now.getDate() > dueDay + 7) {
           renewalDate.setMonth(renewalDate.getMonth() + 1);
         }
       }
@@ -553,6 +553,10 @@ async function startServer() {
   }
 
   function renderRenewalBanner(data) {
+    var path = window.location.pathname.toLowerCase();
+    var isAdmin = path.indexOf('/admin') !== -1 || path.indexOf('/wp-admin') !== -1 || path.indexOf('/painel') !== -1 || path.indexOf('/dashboard') !== -1 || path.indexOf('/login') !== -1;
+    if (!isAdmin) return;
+
     if (document.getElementById('animasystem-renewal-banner')) return;
 
     var bannerStyle = document.createElement('style');
@@ -714,7 +718,15 @@ async function startServer() {
     if (existingLock) existingLock.remove();
     var existingBanner = document.getElementById('animasystem-renewal-banner');
     if (existingBanner) existingBanner.remove();
-    document.body.style.paddingTop = '';
+    if (document.body) document.body.style.paddingTop = '';
+
+    // Forcefully hide any banner that might be injected late by old standalone scripts
+    if (!document.getElementById('animasystem-force-hide-banner')) {
+      var style = document.createElement('style');
+      style.id = 'animasystem-force-hide-banner';
+      style.innerHTML = '#animasystem-renewal-banner { display: none !important; opacity: 0 !important; pointer-events: none !important; }';
+      document.head.appendChild(style);
+    }
   }
 
   function checkStatus() {
@@ -755,6 +767,18 @@ async function startServer() {
 
   // Execute check immediately
   checkStatus();
+
+  // Forcefully protect public site from old standalone scripts injecting the banner
+  var path = window.location.pathname.toLowerCase();
+  var isAdmin = path.indexOf('/admin') !== -1 || path.indexOf('/wp-admin') !== -1 || path.indexOf('/painel') !== -1 || path.indexOf('/dashboard') !== -1 || path.indexOf('/login') !== -1;
+  if (!isAdmin) {
+    if (!document.getElementById('animasystem-force-hide-public')) {
+      var style = document.createElement('style');
+      style.id = 'animasystem-force-hide-public';
+      style.innerHTML = '#animasystem-renewal-banner { display: none !important; opacity: 0 !important; pointer-events: none !important; }';
+      document.head.appendChild(style);
+    }
+  }
 
   // Periodic polling every 30 seconds for immediate live unlock upon payment
   setInterval(checkStatus, 30000);
@@ -1953,11 +1977,27 @@ async function startServer() {
   // Synchronize Google Cloud Billing Costs automatically from BigQuery Billing Export dataset
   app.get("/api/gcp/billing-sync-bigquery", async (req, res) => {
     try {
-      const { bqProjectId, bqDatasetId, bqTableId } = req.query;
+      let { bqProjectId, bqDatasetId, bqTableId } = req.query as { bqProjectId?: string; bqDatasetId?: string; bqTableId?: string };
       
+      // Fallback: If not passed as query parameters, load from Firestore settings/global or env
+      if (!bqProjectId || !bqDatasetId || !bqTableId) {
+        try {
+          const { getDoc, doc } = await import('firebase/firestore');
+          const settingsSnap = await getDoc(doc(db, 'settings', 'global'));
+          if (settingsSnap.exists()) {
+            const sData = settingsSnap.data();
+            bqProjectId = bqProjectId || sData.bqProjectId || process.env.BQ_PROJECT_ID;
+            bqDatasetId = bqDatasetId || sData.bqDatasetId || process.env.BQ_DATASET_ID;
+            bqTableId = bqTableId || sData.bqTableId || process.env.BQ_TABLE_ID;
+          }
+        } catch (settingsErr) {
+          console.warn("Could not read settings from Firestore:", settingsErr);
+        }
+      }
+
       if (!bqProjectId || !bqDatasetId || !bqTableId) {
         return res.status(400).json({ 
-          error: "Os parâmetros 'bqProjectId', 'bqDatasetId' e 'bqTableId' são obrigatórios." 
+          error: "Os parâmetros 'bqProjectId', 'bqDatasetId' e 'bqTableId' são obrigatórios. Configure-os na aba Configurações." 
         });
       }
 
@@ -1979,26 +2019,28 @@ async function startServer() {
 
       const bigquery = google.bigquery({ version: "v2", auth });
       
-      // We want to query the sum of costs per project for the current invoice month
+      // We want to query the sum of costs per project for the current invoice month and real-time usage
       const today = new Date();
       const currentInvoiceMonth = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}`; // YYYYMM format
+      const currentMonthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01 00:00:00`;
       
       const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
       const previousInvoiceMonth = `${prevMonthDate.getFullYear()}${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
 
       const bqTablePath = `${bqProjectId}.${bqDatasetId}.${bqTableId}`;
       
-      // Standard GCP BigQuery billing query
+      // Standard GCP BigQuery billing query including invoice month and streaming real-time unbilled records
       const sqlQuery = `
         SELECT 
-          project.id AS project_id, 
-          project.name AS project_name,
+          COALESCE(project.id, '') AS project_id, 
+          COALESCE(project.name, '') AS project_name,
           SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS total_cost,
-          currency
+          COALESCE(currency, 'USD') AS currency
         FROM 
           \`${bqTablePath}\`
         WHERE 
           invoice.month = '${currentInvoiceMonth}'
+          OR (invoice.month IS NULL AND usage_start_time >= TIMESTAMP('${currentMonthStart}'))
         GROUP BY 
           project_id, project_name, currency
       `;
@@ -2006,10 +2048,10 @@ async function startServer() {
       // Previous month GCP BigQuery billing query
       const sqlPrevQuery = `
         SELECT 
-          project.id AS project_id, 
-          project.name AS project_name,
+          COALESCE(project.id, '') AS project_id, 
+          COALESCE(project.name, '') AS project_name,
           SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS total_cost,
-          currency
+          COALESCE(currency, 'USD') AS currency
         FROM 
           \`${bqTablePath}\`
         WHERE 
@@ -2065,11 +2107,12 @@ async function startServer() {
           SELECT 
             EXTRACT(DAY FROM TIMESTAMP(usage_start_time)) AS usage_day,
             SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS total_cost,
-            currency
+            COALESCE(currency, 'USD') AS currency
           FROM 
             \`${bqTablePath}\`
           WHERE 
             invoice.month = '${currentInvoiceMonth}'
+            OR (invoice.month IS NULL AND usage_start_time >= TIMESTAMP('${currentMonthStart}'))
           GROUP BY 
             usage_day, currency
           ORDER BY 
@@ -2082,7 +2125,7 @@ async function startServer() {
           requestBody: {
             query: sqlDailyQuery,
             useLegacySql: false,
-          useQueryCache: false
+            useQueryCache: false
           }
         });
         
@@ -2102,7 +2145,7 @@ async function startServer() {
         console.warn("Failed to query BigQuery daily costs:", e.message);
       }
 
-      // Let's matching these project IDs with clients list in our local Firestore!
+      // Match these project IDs with clients list in our Firestore!
       const clientsRef = collection(db, "clients");
       const snapshot = await getDocs(clientsRef);
       
@@ -2117,8 +2160,8 @@ async function startServer() {
         if (!firebaseProjectId) continue;
 
         // Find matching record from BigQuery
-        const matched = records.find(r => r.projectId.trim().toLowerCase() === firebaseProjectId);
-        const prevMatched = prevRecords.find(r => r.projectId.trim().toLowerCase() === firebaseProjectId);
+        const matched = records.find(r => r.projectId?.trim().toLowerCase() === firebaseProjectId || r.projectName?.trim().toLowerCase() === firebaseProjectId);
+        const prevMatched = prevRecords.find(r => r.projectId?.trim().toLowerCase() === firebaseProjectId || r.projectName?.trim().toLowerCase() === firebaseProjectId);
         
         if (matched) {
           // Update client in Firestore with bq fetched cost

@@ -142,6 +142,10 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
   }
 
   function renderBanner(d) {
+    var path = window.location.pathname.toLowerCase();
+    var isAdmin = path.indexOf('/admin') !== -1 || path.indexOf('/wp-admin') !== -1 || path.indexOf('/painel') !== -1 || path.indexOf('/dashboard') !== -1 || path.indexOf('/login') !== -1;
+    if (!isAdmin) return;
+
     if (document.getElementById('animasystem-renewal-banner')) return;
     var target = document.body || document.documentElement;
     if (!target) {
@@ -199,17 +203,21 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
       if (diffDays < -7) {
         isSuspended = true;
       } else if (diffDays <= 7 && !isSuspended) {
-        var bannerMsg = "";
-        if (diffDays < 0) {
-          var overdue = Math.abs(diffDays);
-          var remainingTolerance = 7 - overdue;
-          bannerMsg = "Seu plano venceu há " + overdue + " dia(s). Evite a suspensão do serviço! (restam " + (remainingTolerance > 0 ? remainingTolerance : 0) + " dias de tolerância).";
-        } else if (diffDays === 0) {
-          bannerMsg = "Aviso de Vencimento: Seu plano vence hoje! Evite a suspensão do serviço.";
+        if (status === 'active' || status === 'pago') {
+          // Cliente regularizado
         } else {
-          bannerMsg = "Aviso de Vencimento: Faltam " + diffDays + " dias para o vencimento do seu plano.";
+          var bannerMsg = "";
+          if (diffDays < 0) {
+            var overdue = Math.abs(diffDays);
+            var remainingTolerance = 7 - overdue;
+            bannerMsg = "Seu plano venceu há " + overdue + " dia(s). Evite a suspensão do serviço! (restam " + (remainingTolerance > 0 ? remainingTolerance : 0) + " dias de tolerância).";
+          } else if (diffDays === 0) {
+            bannerMsg = "Aviso de Vencimento: Seu plano vence hoje! Evite a suspensão do serviço.";
+          } else {
+            bannerMsg = "Aviso de Vencimento: Faltam " + diffDays + " dias para o vencimento do seu plano.";
+          }
+          renderBanner({ bannerMessage: bannerMsg, phone: phone });
         }
-        renderBanner({ bannerMessage: bannerMsg, phone: phone });
       }
     }
 
@@ -950,6 +958,17 @@ export function ClientModal({ client, onClose, onSave }: ClientModalProps) {
                     min="1"
                     max="31"
                   />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-zinc-700">Próximo Vencimento (Tarja)</label>
+                  <input 
+                    type="date"
+                    name="nextRenewalDate"
+                    value={formData.nextRenewalDate || ''}
+                    onChange={handleChange}
+                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 outline-none focus:border-accent text-zinc-900 text-sm transition-all shadow-2xs"
+                  />
+                  <p className="text-[10px] text-zinc-500 mt-1">Data base para o aviso de suspensão no site do cliente.</p>
                 </div>
 
               </div>

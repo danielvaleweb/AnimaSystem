@@ -65,18 +65,14 @@ export function FinanceView({ onNavigate }: { onNavigate?: (view: any, id?: stri
   const [isSyncing, setIsSyncing] = useState(false);
   
   const handleSync = async () => {
-    const bqProjectId = localStorage.getItem('bqProjectId');
-    const bqDatasetId = localStorage.getItem('bqDatasetId');
-    const bqTableId = localStorage.getItem('bqTableId');
-
-    if (!bqProjectId || !bqDatasetId || !bqTableId) {
-      showError("Configuração ausente", "Configure a sincronização do BigQuery nas Configurações do sistema.");
-      return;
-    }
+    const bqProjectId = localStorage.getItem('bqProjectId') || '';
+    const bqDatasetId = localStorage.getItem('bqDatasetId') || '';
+    const bqTableId = localStorage.getItem('bqTableId') || '';
 
     setIsSyncing(true);
     try {
-      const url = `/api/gcp/billing-sync-bigquery?bqProjectId=${encodeURIComponent(bqProjectId)}&bqDatasetId=${encodeURIComponent(bqDatasetId)}&bqTableId=${encodeURIComponent(bqTableId)}`;
+      const qs = bqProjectId && bqDatasetId && bqTableId ? `?bqProjectId=${encodeURIComponent(bqProjectId)}&bqDatasetId=${encodeURIComponent(bqDatasetId)}&bqTableId=${encodeURIComponent(bqTableId)}` : '';
+      const url = `/api/gcp/billing-sync-bigquery${qs}`;
       const res = await fetch(url);
       const data = await res.json();
       
@@ -84,7 +80,7 @@ export function FinanceView({ onNavigate }: { onNavigate?: (view: any, id?: stri
         throw new Error(data.error || data.details || "Falha ao sincronizar com o BigQuery.");
       }
 
-      showSuccess("Sincronização concluída", "Dados financeiros atualizados com sucesso.");
+      showSuccess("Sincronização concluída", `Dados financeiros atualizados (${data.syncedRecordsCount || 0} clientes atualizados).`);
     } catch (err: any) {
       console.error(err);
       showError("Erro na sincronização", err.message || "Erro desconhecido");

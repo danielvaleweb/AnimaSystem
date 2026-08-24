@@ -10,6 +10,16 @@
   
   --animate-marquee: marquee 150s linear infinite;
   --animate-shimmer: shimmer 1.5s infinite;
+  --animate-wiggle-slow: wiggle 6s ease-in-out infinite;
+
+  @keyframes wiggle {
+    0%, 100% {
+      transform: rotate(-3deg) translateY(0px);
+    }
+    50% {
+      transform: rotate(3deg) translateY(-8px);
+    }
+  }
 
   @keyframes marquee {
     from {

@@ -143,6 +143,36 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
     }
   };
 
+  const handleMarkAsPaid = async () => {
+    if (!client) return;
+    try {
+      // Calculate next month's renewal date
+      const now = new Date();
+      let dueDay = client.dueDate || 10;
+      let nextRenDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
+      
+      // If today is past the due day (e.g. today is 15th, due is 10th), next renewal is next month.
+      // Actually, if we are marking it paid, we generally advance to the NEXT month's due date.
+      if (now.getDate() >= dueDay - 5) {
+        nextRenDate.setMonth(nextRenDate.getMonth() + 1);
+      }
+      
+      const yyyy = nextRenDate.getFullYear();
+      const mm = String(nextRenDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(nextRenDate.getDate()).padStart(2, '0');
+      const newRenewalDate = `${yyyy}-${mm}-${dd}`;
+
+      await updateDoc(doc(db, 'clients', client.id), {
+        status: 'active',
+        nextRenewalDate: newRenewalDate
+      });
+      setShowMenu(false);
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao registrar pagamento.');
+    }
+  };
+
   const tabs: { id: TabType; label: string; icon: any }[] = [
     { id: 'resumo', label: 'Resumo', icon: FileText },
   ];
@@ -591,6 +621,14 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
                     >
                       <Edit2 className="w-4 h-4 text-zinc-500" />
                       Editar Cliente
+                    </button>
+                    
+                    <button 
+                      onClick={handleMarkAsPaid}
+                      className="w-full text-left px-4 py-2.5 text-sm text-emerald-600 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Registrar Pagamento
                     </button>
                     
                     <div className="h-px bg-zinc-800/50 my-1"></div>

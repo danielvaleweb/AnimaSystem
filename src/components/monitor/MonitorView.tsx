@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNotification } from '../NotificationContext';
 import { 
   Database, HardDrive, Users, Zap, Globe, 
   CheckCircle2, AlertTriangle, XOctagon, Activity, Server, Clock, RefreshCw, Rocket, Hand, Power, Code, ChevronDown,
@@ -6,7 +7,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../utils';
-import { collection, query, where, onSnapshot, getFirestore, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getFirestore, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { getCountFromServer } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { ClientData } from '../../types';
@@ -60,11 +61,11 @@ const formatRelativeTime = (dateString?: string): string => {
 type ServiceStatus = 'online' | 'warning' | 'critical';
 
 export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string) => void }) {
+  const { showSuccess } = useNotification();
   const [pulse, setPulse] = useState(false);
   const [clients, setClients] = useState<ClientData[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const selectedClient = clients.find(c => c.id === selectedClientId) || clients[0] || null;
-  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
   const [isTrialModalOpen, setIsTrialModalOpen] = useState(false);
   const [trialEndDate, setTrialEndDate] = useState('');
   const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
@@ -76,9 +77,27 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
   const [debugMode, setDebugMode] = useState(false);
   const [discoveryResults, setDiscoveryResults] = useState<any[] | null>(null);
   const [isDiscovering, setIsDiscovering] = useState(false);
-  const [bqProjectId, setBqProjectId] = useState('');
-  const [bqDatasetId, setBqDatasetId] = useState('');
-  const [bqTableId, setBqTableId] = useState('');
+  const [bqProjectId, setBqProjectId] = useState(() => typeof window !== 'undefined' ? (localStorage.getItem('bqProjectId') || '') : '');
+  const [bqDatasetId, setBqDatasetId] = useState(() => typeof window !== 'undefined' ? (localStorage.getItem('bqDatasetId') || '') : '');
+  const [bqTableId, setBqTableId] = useState(() => typeof window !== 'undefined' ? (localStorage.getItem('bqTableId') || '') : '');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bqProjectId', bqProjectId);
+    }
+  }, [bqProjectId]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bqDatasetId', bqDatasetId);
+    }
+  }, [bqDatasetId]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bqTableId', bqTableId);
+    }
+  }, [bqTableId]);
   const [isBqSyncing, setIsBqSyncing] = useState(false);
   const [bqError, setBqError] = useState('');
   const [bqResult, setBqResult] = useState<any>(null);
@@ -126,6 +145,33 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
     { id: 'm2', label: 'Clientes Ativos', collectionPath: 'clients', readWeight: 5, writeWeight: 1 },
     { id: 'm3', label: 'Transações', collectionPath: 'transactions', readWeight: 2, writeWeight: 1 },
   ];
+
+  useEffect(() => {
+    const loadGlobalSettings = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'global');
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.bqProjectId) {
+            setBqProjectId(data.bqProjectId);
+            if (typeof window !== 'undefined') localStorage.setItem('bqProjectId', data.bqProjectId);
+          }
+          if (data.bqDatasetId) {
+            setBqDatasetId(data.bqDatasetId);
+            if (typeof window !== 'undefined') localStorage.setItem('bqDatasetId', data.bqDatasetId);
+          }
+          if (data.bqTableId) {
+            setBqTableId(data.bqTableId);
+            if (typeof window !== 'undefined') localStorage.setItem('bqTableId', data.bqTableId);
+          }
+        }
+      } catch (err) {
+        console.warn("Error loading global settings in MonitorView:", err);
+      }
+    };
+    loadGlobalSettings();
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -227,13 +273,29 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
 
     // Sync BigQuery billing data first (financeiro)
     try {
-      const bqProjectId = localStorage.getItem('bqProjectId');
-      const bqDatasetId = localStorage.getItem('bqDatasetId');
-      const bqTableId = localStorage.getItem('bqTableId');
+      const bqP = bqProjectId || (typeof window !== 'undefined' ? localStorage.getItem('bqProjectId') : '') || '';
+      const bqD = bqDatasetId || (typeof window !== 'undefined' ? localStorage.getItem('bqDatasetId') : '') || '';
+      const bqT = bqTableId || (typeof window !== 'undefined' ? localStorage.getItem('bqTableId') : '') || '';
       
-      if (bqProjectId && bqDatasetId && bqTableId) {
-        const url = `/api/gcp/billing-sync-bigquery?bqProjectId=${encodeURIComponent(bqProjectId)}&bqDatasetId=${encodeURIComponent(bqDatasetId)}&bqTableId=${encodeURIComponent(bqTableId)}`;
-        await fetch(url);
+      const qs = bqP && bqD && bqT ? `?bqProjectId=${encodeURIComponent(bqP)}&bqDatasetId=${encodeURIComponent(bqD)}&bqTableId=${encodeURIComponent(bqT)}` : '';
+      const url = `/api/gcp/billing-sync-bigquery${qs}`;
+      const bqRes = await fetch(url);
+      if (bqRes.ok) {
+        const bqData = await bqRes.json();
+        if (bqData?.details?.length && selectedClient) {
+          const match = bqData.details.find((d: any) => 
+            (selectedClient.firebaseProjectId && d.projectId?.trim().toLowerCase() === selectedClient.firebaseProjectId?.trim().toLowerCase()) ||
+            (selectedClient.name && d.clientName?.trim().toLowerCase() === selectedClient.name?.trim().toLowerCase()) ||
+            d.clientId === selectedClient.id
+          );
+          if (match && match.costBRL !== undefined) {
+            setClients(prev => prev.map(c => c.id === selectedClient.id ? { 
+              ...c, 
+              gcpBillingCost: match.costBRL,
+              gcpBillingLastSync: new Date().toISOString()
+            } : c));
+          }
+        }
       }
     } catch (err) {
       console.error("Erro na sincronização BQ:", err);
@@ -345,6 +407,7 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
              lastGcpMetrics: fetchedGcp || null,
              lastRealMetrics: fetchedReal.length ? fetchedReal : null
           });
+          showSuccess('Atualização Concluída', 'Métricas e faturamento sincronizados com sucesso.');
        } catch (err) {
           console.error("Erro ao salvar cache de metricas", err);
        }
@@ -628,12 +691,15 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
   };
 
   const handleBqSync = async () => {
-    if (!bqProjectId || !bqDatasetId || !bqTableId) return;
+    const bqP = bqProjectId || (typeof window !== 'undefined' ? localStorage.getItem('bqProjectId') : '') || '';
+    const bqD = bqDatasetId || (typeof window !== 'undefined' ? localStorage.getItem('bqDatasetId') : '') || '';
+    const bqT = bqTableId || (typeof window !== 'undefined' ? localStorage.getItem('bqTableId') : '') || '';
+
     setIsBqSyncing(true);
     setBqError('');
     try {
-      // Direct query emulation / API call
-      const url = `/api/gcp/billing-sync-bigquery?bqProjectId=${encodeURIComponent(bqProjectId)}&bqDatasetId=${encodeURIComponent(bqDatasetId)}&bqTableId=${encodeURIComponent(bqTableId)}`;
+      const qs = bqP && bqD && bqT ? `?bqProjectId=${encodeURIComponent(bqP)}&bqDatasetId=${encodeURIComponent(bqD)}&bqTableId=${encodeURIComponent(bqT)}` : '';
+      const url = `/api/gcp/billing-sync-bigquery${qs}`;
       const res = await fetch(url);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -641,6 +707,21 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
       }
       const result = await res.json();
       setBqResult(result);
+
+      if (result?.details?.length && selectedClient) {
+        const match = result.details.find((d: any) => 
+          (selectedClient.firebaseProjectId && d.projectId?.trim().toLowerCase() === selectedClient.firebaseProjectId?.trim().toLowerCase()) ||
+          (selectedClient.name && d.clientName?.trim().toLowerCase() === selectedClient.name?.trim().toLowerCase()) ||
+          d.clientId === selectedClient.id
+        );
+        if (match && match.costBRL !== undefined) {
+          setClients(prev => prev.map(c => c.id === selectedClient.id ? { 
+            ...c, 
+            gcpBillingCost: match.costBRL,
+            gcpBillingLastSync: new Date().toISOString()
+          } : c));
+        }
+      }
     } catch (err: any) {
       setBqError(err.message || 'Erro ao sincronizar com BigQuery.');
     } finally {
@@ -678,7 +759,6 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
                   type="button"
                   onClick={() => {
                     setIsStatusDropdownOpen(!isStatusDropdownOpen);
-                    setIsClientDropdownOpen(false);
                     setIsTimeDropdownOpen(false);
                   }}
                   className={cn(
@@ -848,8 +928,48 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
         </div>
       </div>
       
+      
+      {/* Client Selector Cards */}
+      <div className="flex items-center gap-4 overflow-x-auto pb-6 scrollbar-hide">
+        {clients.map(client => {
+          const isSelected = selectedClient?.id === client.id;
+          return (
+            <button
+              key={client.id}
+              type="button"
+              onClick={() => setSelectedClientId(client.id)}
+              className={cn(
+                "flex flex-col items-center justify-center min-w-[90px] h-[90px] rounded-2xl border transition-all duration-300 cursor-pointer shrink-0",
+                isSelected
+                  ? "border-accent bg-accent shadow-[0_0_20px_rgba(215,254,3,0.4)]"
+                  : "border-zinc-200/80 bg-white hover:border-zinc-300 grayscale opacity-70 hover:opacity-100 shadow-none"
+              )}
+            >
+              {client.logoUrl ? (
+                <img src={client.logoUrl} alt={client.name} className={cn(
+                  "w-10 h-10 rounded-full object-cover mb-2 border",
+                  isSelected ? "border-black/10 bg-white" : "border-zinc-100"
+                )} />
+              ) : (
+                <div className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-2 uppercase border",
+                  isSelected ? "bg-black/10 text-black border-transparent" : "bg-zinc-100 text-zinc-600 border-zinc-200"
+                )}>
+                  {client.logoInitials || client.name.substring(0, 2)}
+                </div>
+              )}
+              <span className={cn(
+                "text-[10px] font-medium truncate w-[75px] text-center px-1 leading-tight",
+                isSelected ? "text-black font-bold" : "text-zinc-600"
+              )}>
+                {client.name.split(' ').slice(0, 2).join(' ')}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex-1 w-full flex flex-col">
-        
         {/* Consumo de Cotas Limits */}
         <div className="bg-white border border-zinc-200/80 rounded-[2rem] p-4 sm:p-6 lg:p-8 flex flex-col">
            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -862,64 +982,12 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
   
                 
   
-                {/* Custom Client Selector (Anchored Overlay) */}
-                <div className="relative w-full sm:w-52">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsClientDropdownOpen(!isClientDropdownOpen);
-                      setIsTimeDropdownOpen(false);
-                    }}
-                    className="flex items-center justify-between gap-2 bg-white border border-zinc-200 text-zinc-800 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-300 w-full cursor-pointer text-left select-none"
-                  >
-                    <span className="truncate">{selectedClient?.name || 'Nenhum cliente...'}</span>
-                    <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform duration-200 shrink-0", isClientDropdownOpen && "rotate-180")} />
-                  </button>
-                  <AnimatePresence>
-                    {isClientDropdownOpen && (
-                      <>
-                        <div className="fixed inset-0 z-30" onClick={() => setIsClientDropdownOpen(false)}></div>
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 10 }}
-                          transition={{ duration: 0.3, ease: 'easeOut' }}
-                          className="absolute left-0 right-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-sm z-40 py-1 overflow-hidden p-anchored-overlay-enter-active max-h-60 overflow-y-auto"
-                          style={{ transformOrigin: 'top' }}
-                        >
-                          {clients.length === 0 ? (
-                            <div className="px-4 py-2.5 text-sm text-zinc-500 italic">Nenhum cliente...</div>
-                          ) : (
-                            clients.map(client => (
-                              <button
-                                key={client.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedClientId(client.id);
-                                  setIsClientDropdownOpen(false);
-                                }}
-                                className={cn(
-                                  "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer",
-                                  selectedClient?.id === client.id
-                                     ? "text-accent font-semibold hover:bg-white/40"
-                                     : "text-zinc-700 hover:bg-white"
-                                )}
-                              >
-                                <span className="truncate">{client.name}</span>
-                              </button>
-                            ))
-                          )}
-                        </motion.div>
-                      </>
-                    )}
-                  </AnimatePresence>
-                </div>              {/* Custom TimeRange Selector (Anchored Overlay) */}
+                {/* Custom TimeRange Selector (Anchored Overlay) */}
                 <div className="relative w-full sm:w-44">
                   <button
                     type="button"
                     onClick={() => {
                       setIsTimeDropdownOpen(!isTimeDropdownOpen);
-                      setIsClientDropdownOpen(false);
                     }}
                     className="flex items-center justify-between gap-2 bg-white border border-zinc-200 text-zinc-800 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-300 cursor-pointer text-left select-none w-full"
                   >
@@ -1244,203 +1312,8 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
 
       </div>
 
-      {selectedClient && (
-        <div className="bg-white border border-zinc-200/80 rounded-[2rem] p-6 lg:p-8 flex flex-col mt-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <h3 className="font-display text-lg font-bold flex items-center gap-2 text-black min-w-0">
-              <Server className="w-5 h-5 text-accent shrink-0" />
-              <span className="truncate">Configuração do Banco de Dados ({selectedClient.name})</span>
-            </h3>
-            {!editingFirebase ? (
-              <button 
-                type="button"
-                onClick={() => setEditingFirebase(true)}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium rounded-xl transition-colors cursor-pointer shrink-0"
-              >
-                Editar Configuração
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 shrink-0">
-                <button 
-                  type="button"
-                  onClick={() => setEditingFirebase(false)}
-                  className="px-4 py-2 bg-transparent hover:bg-zinc-100 text-zinc-500 text-sm font-medium rounded-xl transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="button"
-                  onClick={handleSaveFirebaseConfig}
-                  className="px-4 py-2 bg-accent hover:bg-accent-hover text-black text-sm font-medium rounded-xl transition-colors cursor-pointer"
-                >
-                  Salvar
-                </button>
-              </div>
-            )}
-          </div>
 
-          {editingFirebase ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-zinc-500 mb-1 block">ID do Projeto</label>
-                  <input 
-                    value={fbProjectId}
-                    onChange={(e) => setFbProjectId(e.target.value)}
-                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-accent font-mono"
-                    placeholder="meu-projeto-123"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-zinc-500 mb-1 block">Nome do DB</label>
-                  <input 
-                    value={fbDbName}
-                    onChange={(e) => setFbDbName(e.target.value)}
-                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-accent font-mono"
-                    placeholder="(default)"
-                  />
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-zinc-500 mb-1 block">Configuração SDK (JSON/JS)</label>
-                  <textarea 
-                    value={fbConfig}
-                    onChange={(e) => setFbConfig(e.target.value)}
-                    className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 outline-none focus:border-accent font-mono h-32 resize-none text-xs mb-2"
-                    placeholder="Cole aqui a configuração..."
-                  />
-                </div>
-                
-                <div className="bg-white p-4 border border-zinc-200 rounded-xl">
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-sm font-medium text-zinc-500 block">Coleções para Monitorar (Volume Real)</label>
-                    <button type="button" onClick={handleAddMonitorCol} className="text-xs text-accent hover:underline cursor-pointer">
-                      + Adicionar Coleção
-                    </button>
-                  </div>
-                  {monitorCols.length === 0 ? (
-                     <div className="text-xs text-zinc-600 italic">Usando configurações padrão (Leads, Clientes, Transações).</div>
-                  ) : (
-                     <div className="space-y-3">
-                       {monitorCols.map((c, idx) => (
-                         <div key={c.id} className="grid grid-cols-[1fr,1fr,50px,50px,20px] gap-2 items-center">
-                            <input 
-                              value={c.label} 
-                              onChange={e => handleUpdateMonitorCol(c.id, 'label', e.target.value)} 
-                              placeholder="Nome Exibição" 
-                              className="bg-white border border-zinc-200 rounded px-2 py-1 text-xs" 
-                            />
-                            <input 
-                              value={c.collectionPath} 
-                              onChange={e => handleUpdateMonitorCol(c.id, 'collectionPath', e.target.value)} 
-                              placeholder="Coleção" 
-                              className="bg-white border border-zinc-200 rounded px-2 py-1 text-xs font-mono" 
-                            />
-                            <input 
-                              type="number"
-                              title="Peso Leituras (Multiplicador)"
-                              value={c.readWeight} 
-                              onChange={e => handleUpdateMonitorCol(c.id, 'readWeight', Number(e.target.value))} 
-                              className="bg-white border border-zinc-200 rounded px-2 py-1 text-xs text-center" 
-                            />
-                            <input 
-                              type="number"
-                              title="Peso Gravações (Multiplicador)"
-                              value={c.writeWeight} 
-                              onChange={e => handleUpdateMonitorCol(c.id, 'writeWeight', Number(e.target.value))} 
-                              className="bg-white border border-zinc-200 rounded px-2 py-1 text-xs text-center" 
-                            />
-                            <button type="button" onClick={() => handleRemoveMonitorCol(c.id)} className="text-rose-500 hover:text-rose-600 cursor-pointer">
-                              <XOctagon className="w-3 h-3" />
-                            </button>
-                         </div>
-                       ))}
-                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 rounded-xl bg-white border border-zinc-200/60">
-              <div className="min-w-0">
-                <span className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Project ID</span>
-                <span className="text-zinc-800 font-mono text-sm break-all">{selectedClient.firebaseProjectId || 'Não configurado'}</span>
-              </div>
-              <div className="min-w-0">
-                <span className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Database Name</span>
-                <span className="text-zinc-800 font-mono text-sm break-all">{selectedClient.firebaseDatabaseName || '(default)'}</span>
-              </div>
-              <div className="min-w-0">
-                <span className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">Status SDK</span>
-                <span className="text-zinc-800 text-sm flex items-center gap-2 mt-1">
-                  {selectedClient.parsedFirebaseConfig ? (
-                    <><span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span> Configurado</>
-                  ) : (
-                    <><span className="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span> Pendente</>
-                  )}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Relatório Comparativo (Administrativo) */}
-      {selectedClient && gcpMetrics && !editingFirebase && (
-        <div className="bg-white border border-zinc-200/80 rounded-[2rem] p-6 lg:p-8 flex flex-col mt-6">
-            <h3 className="font-display text-lg font-bold mb-6 flex items-center gap-2 text-black">
-              <Activity className="w-5 h-5 text-accent" />
-              Relatório Comparativo (Administrativo)
-            </h3>
-            <p className="text-zinc-500 text-sm mb-6">Compare os números do painel Uso do Firebase com as métricas extraídas via Cloud Monitoring (AnymaSystem) para verificar a divergência. Insira os valores manuais do Firebase abaixo:</p>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-zinc-700">
-                <thead className="bg-white text-zinc-500 sticky top-0">
-                  <tr>
-                    <th className="p-3 font-semibold">Métrica</th>
-                    <th className="p-3 w-48 font-semibold">Firebase Console (30 dias)</th>
-                    <th className="p-3 w-48 font-semibold">AnymaSystem (API)</th>
-                    <th className="p-3 w-32 font-semibold">Divergência</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/60 font-mono">
-                  {[
-                    { label: "Leituras", key: "reads", sysVal: (gcpMetrics.reads_billable?.value > 0 ? gcpMetrics.reads_billable.value : gcpMetrics.reads_ops?.value) || 0 },
-                    { label: "Gravações", key: "writes", sysVal: (gcpMetrics.writes_billable?.value > 0 ? gcpMetrics.writes_billable.value : gcpMetrics.writes_ops?.value) || 0 },
-                    { label: "Leituras Realtime", key: "realtime", sysVal: (gcpMetrics.realtime_billable?.value > 0 ? gcpMetrics.realtime_billable.value : gcpMetrics.realtime?.value) || 0 },
-                    { label: "Firestore (MB)", key: "storage", sysVal: (gcpMetrics.storageBytes?.value / 1024 / 1024) || 0 },
-                    { label: "Storage Arquivos (MB)", key: "cloud_storage", sysVal: (Math.max(gcpMetrics.cloudStorageBytes?.value || 0, gcpMetrics.cloudStorageBytesV2?.value || 0) / 1024 / 1024) || 0 }
-                  ].map((row, idx) => {
-                    const fbVal = (consoleData as any)[row.key];
-                    const div = getDivergence(row.sysVal, fbVal);
-                    const divColor = Math.abs(div) < 5 ? 'text-emerald-600' : Math.abs(div) < 15 ? 'text-amber-400' : 'text-rose-600';
-                    return (
-                    <tr key={idx} className="hover:bg-zinc-50">
-                      <td className="p-3 font-sans font-medium text-zinc-800">{row.label}</td>
-                      <td className="p-3">
-                        <input 
-                          type="number" 
-                          value={fbVal || ''} 
-                          onChange={e => setConsoleData(prev => ({ ...prev, [row.key]: Number(e.target.value) }))}
-                          className="w-full bg-white border border-zinc-200 rounded px-2 py-1 outline-none focus:border-accent text-right"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="p-3 text-right">{row.sysVal > 0 && row.key !== 'storage' ? row.sysVal.toLocaleString() : row.key === 'storage' ? row.sysVal.toFixed(2) : '0'}</td>
-                      <td className={cn("p-3 text-right font-bold", divColor)}>
-                         {fbVal > 0 ? (div > 0 ? `+${div.toFixed(1)}%` : `${div.toFixed(1)}%`) : '-'}
-                      </td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-        </div>
-      )}
+      
 
       {/* Modal de Importação de Faturamento GCP via CSV / BigQuery */}
       <AnimatePresence>
