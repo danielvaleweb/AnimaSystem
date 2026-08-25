@@ -3,7 +3,7 @@ import {
   ArrowLeft, Users, Database,
   FileText, MoreVertical, Edit2, Ban, Trash2, CheckCircle,
   Rocket, Power, Code, Hand, Clock, Check, Sparkles, CreditCard, Phone,
-  Copy, Globe, Calendar, ExternalLink, Link as LinkIcon
+  Copy, Globe, Calendar, ExternalLink, Link as LinkIcon, LifeBuoy
 } from 'lucide-react';
 import {  ClientData } from '../../types';
 import {  cn, formatClientRenewalDate, getClientDaysUntilRenewal, isClientRenewalAlert, getClientDomainInfo } from '../../utils';
@@ -34,6 +34,20 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
   const [trialEndDate, setTrialEndDate] = useState('');
   const [copiedGuardId, setCopiedGuardId] = useState(false);
   const [copiedRenewalLink, setCopiedRenewalLink] = useState(false);
+  const [copiedSupportLink, setCopiedSupportLink] = useState(false);
+
+  const getSupportUrl = (targetClient: ClientData) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://animasystem.com.br';
+    return `${origin}/suporte-cliente-id=${targetClient.id}`;
+  };
+
+  const handleCopySupportLink = () => {
+    if (!client) return;
+    const url = getSupportUrl(client);
+    navigator.clipboard.writeText(url);
+    setCopiedSupportLink(true);
+    setTimeout(() => setCopiedSupportLink(false), 2500);
+  };
 
   const getRenewalUrl = (targetClient: ClientData) => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://animasystem.com.br';
@@ -576,30 +590,55 @@ export function ClientDetailView({ clientId, onBack, isClientView = false }: Cli
         </div>
 
         {/* Header Actions Menu */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {!isClientView && (
-            <button
-              onClick={handleCopyRenewalLink}
-              title="Copiar Link de Renovação do Cliente"
-              className={cn(
-                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-xs",
-                copiedRenewalLink 
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
-                  : "bg-white text-zinc-700 hover:bg-zinc-50 border-zinc-200 hover:border-zinc-300"
-              )}
-            >
-              {copiedRenewalLink ? (
-                <>
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Link Copiado!</span>
-                </>
-              ) : (
-                <>
-                  <LinkIcon className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Copiar Link de Renovação</span>
-                </>
-              )}
-            </button>
+            <>
+              <button
+                onClick={handleCopySupportLink}
+                title="Copiar Link da Central de Suporte do Cliente"
+                className={cn(
+                  "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-xs",
+                  copiedSupportLink 
+                    ? "bg-blue-50 text-blue-700 border-blue-200" 
+                    : "bg-white text-zinc-700 hover:bg-zinc-50 border-zinc-200 hover:border-zinc-300"
+                )}
+              >
+                {copiedSupportLink ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Link Suporte Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <LifeBuoy className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Copiar Link de Suporte</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleCopyRenewalLink}
+                title="Copiar Link de Renovação do Cliente"
+                className={cn(
+                  "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-xs",
+                  copiedRenewalLink 
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                    : "bg-white text-zinc-700 hover:bg-zinc-50 border-zinc-200 hover:border-zinc-300"
+                )}
+              >
+                {copiedRenewalLink ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Link Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <LinkIcon className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Copiar Link de Renovação</span>
+                  </>
+                )}
+              </button>
+            </>
           )}
 
           {!isClientView && (

@@ -25,6 +25,28 @@ export function LandingPage({ onEnter }: LandingPageProps) {
   const [currentUserName, setCurrentUserName] = useState<string>('');
   const [currentUserPortalLink, setCurrentUserPortalLink] = useState<string>('');
 
+  // Dark Mode state with localStorage persistence
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('animasystem_theme');
+    return saved === 'dark';
+  });
+
+  const toggleTheme = () => {
+    setIsDarkMode((prev) => {
+      const next = !prev;
+      localStorage.setItem('animasystem_theme', next ? 'dark' : 'light');
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
   // Global Settings State from Firestore
   const [brandName, setBrandName] = useState('AnimaSystem');
 
@@ -70,6 +92,10 @@ export function LandingPage({ onEnter }: LandingPageProps) {
     return () => unsubscribe();
   }, []);
 
+  const handleOpenTrial = () => {
+    navigate('/trial');
+  };
+
   const handleScrollToAi = () => {
     const el = document.getElementById('ia-first');
     if (el) {
@@ -78,7 +104,9 @@ export function LandingPage({ onEnter }: LandingPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-slate-900 font-sans selection:bg-[#D7FE03] selection:text-black antialiased">
+    <div className={`min-h-screen font-sans selection:bg-[#D7FE03] selection:text-black antialiased transition-colors duration-500 ${
+      isDarkMode ? 'bg-[#070709] text-white' : 'bg-[#F8F9FA] text-slate-900'
+    }`}>
       
       {/* 1. Header Navigation */}
       <LandingHeader
@@ -87,34 +115,38 @@ export function LandingPage({ onEnter }: LandingPageProps) {
         currentUserName={currentUserName}
         currentUserPortalLink={currentUserPortalLink}
         onOpenLoginModal={() => setIsAuthModalOpen(true)}
-        onOpenDemoModal={() => setIsDemoModalOpen(true)}
+        onOpenDemoModal={handleOpenTrial}
+        isDarkMode={isDarkMode}
       />
 
-      {/* 2. AI First Hero Section */}
+      {/* 2. AI First Hero Section with HUD Telemetry & Theme Switcher */}
       <HeroSection
-        onOpenDemoModal={() => setIsDemoModalOpen(true)}
+        onOpenDemoModal={handleOpenTrial}
         onScrollToAi={handleScrollToAi}
+        isDarkMode={isDarkMode}
+        onToggleTheme={toggleTheme}
       />
 
-      {/* 3. Decision Clarity & Growth - Sobre Nós Intro Section (Logo loop follower) */}
+      {/* 3. Decision Clarity & Growth - Sobre Nós Intro Section */}
       <DecisionClaritySection
-        onOpenDemoModal={() => setIsDemoModalOpen(true)}
+        onOpenDemoModal={handleOpenTrial}
+        isDarkMode={isDarkMode}
       />
 
-      {/* 4. Plans & Pricing Table (In Dark Background) */}
+      {/* 4. Plans & Pricing Table */}
       <PlansSection
         onOpenRegisterModal={() => setIsAuthModalOpen(true)}
-        onOpenDemoModal={() => setIsDemoModalOpen(true)}
+        onOpenDemoModal={handleOpenTrial}
       />
 
       {/* 5. Footer */}
       <MegaCtaAndFooter
         brandName={brandName}
-        onOpenDemoModal={() => setIsDemoModalOpen(true)}
+        onOpenDemoModal={handleOpenTrial}
         onOpenLoginModal={() => setIsAuthModalOpen(true)}
       />
 
-      {/* 13. Full Authentication & Demo Schedule Modals */}
+      {/* 6. Full Authentication & Demo Schedule Modals */}
       <AuthAndLeadModals
         isAuthModalOpen={isAuthModalOpen}
         onCloseAuthModal={() => setIsAuthModalOpen(false)}

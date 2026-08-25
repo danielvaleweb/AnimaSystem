@@ -1,9 +1,9 @@
-import { Search, Menu, Settings, ShieldAlert, Bell, Palette, LogOut, Key, SearchIcon, Zap, ShieldCheck, Activity, ChevronDown, CheckCircle2, Calendar, Clock } from 'lucide-react';
+import { Search, Menu, Settings, ShieldAlert, Bell, Palette, LogOut, Key, SearchIcon, Zap, ShieldCheck, Activity, ChevronDown, CheckCircle2, Calendar, Clock, LifeBuoy, AlertCircle, ArrowRight } from 'lucide-react';
 import { ViewType, ClientData } from '../types';
 import { auth, db } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useEffect, useState, useRef } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
 
 interface HeaderProps {
   currentView: ViewType;
@@ -43,9 +43,19 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [hasUnread, setHasUnread] = useState(true);
+  const [hasUnread, setHasUnread] = useState(false);
+  const [readTicketIds, setReadTicketIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('animasystem_read_tickets');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const notificationsRef = useRef<HTMLDivElement>(null);
   const [dueClients, setDueClients] = useState<ClientData[]>([]);
+  const [liveTickets, setLiveTickets] = useState<any[]>([]);
   
   const profileRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -57,6 +67,69 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
+
+  // Real-time listener for tickets
+  useEffect(() => {
+    try {
+      const q = collection(db, 'tickets');
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const tList: any[] = [];
+        snapshot.forEach((docSnap) => {
+          tList.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        // Sort by date descending
+        tList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setLiveTickets(tList);
+      }, (err) => {
+        console.warn("Header tickets listener warning:", err);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Tickets collection listener error:", e);
+    }
+  }, []);
+
+  // Real-time listener for due clients
+  useEffect(() => {
+    try {
+      const q = collection(db, 'clients');
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const cList: ClientData[] = [];
+        const today = new Date();
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as ClientData;
+          if (data.renewalDate) {
+            const rDate = new Date(data.renewalDate);
+            if (rDate.getDate() === today.getDate() && rDate.getMonth() === today.getMonth()) {
+              cList.push({ ...data, id: docSnap.id });
+            }
+          }
+        });
+        setDueClients(cList);
+      }, (err) => {
+        console.warn("Header clients listener warning:", err);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  // Unread calculation
+  const openTickets = liveTickets.filter(t => t.status === 'open' || t.status === 'aberto' || !t.status);
+  const unreadTicketsCount = openTickets.filter(t => !readTicketIds.includes(t.id)).length;
+  const totalNotificationBadgeCount = unreadTicketsCount + dueClients.length;
+
+  useEffect(() => {
+    setHasUnread(totalNotificationBadgeCount > 0);
+  }, [totalNotificationBadgeCount]);
+
+  const markAllAsRead = () => {
+    const allIds = liveTickets.map(t => t.id);
+    setReadTicketIds(allIds);
+    localStorage.setItem('animasystem_read_tickets', JSON.stringify(allIds));
+    setHasUnread(false);
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -78,6 +151,16 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
   const email = user?.email || 'master@animasystem.com';
   const photoURL = user?.photoURL;
   const initials = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+  const handleTicketClick = (ticketId: string) => {
+    if (!readTicketIds.includes(ticketId)) {
+      const updated = [...readTicketIds, ticketId];
+      setReadTicketIds(updated);
+      localStorage.setItem('animasystem_read_tickets', JSON.stringify(updated));
+    }
+    setShowNotifications(false);
+    onNavigate?.('tickets');
+  };
 
   return (
     <header className="mx-6 sm:mx-10 xl:mx-16 mt-6 rounded-3xl bg-white shadow-sm h-20 flex items-center justify-between px-6 sm:px-10 xl:px-12 sticky top-4 z-40" style={{ fontFamily: 'Urbanist, sans-serif' }}>
@@ -115,6 +198,9 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
                 }`}
               >
                 <span>{item.label}</span>
+                {item.label === 'Clientes' && openTickets.length > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                )}
                 {hasSubmenu && (
                   <ChevronDown className={`w-3 h-3 transition-transform duration-200 opacity-70 ${activeDropdown === item.label ? 'rotate-180' : ''}`} />
                 )}
@@ -131,9 +217,14 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
                           onNavigate?.(sub.view);
                           setActiveDropdown(null);
                         }}
-                        className={`w-full text-left px-4 py-2 text-xs transition-all cursor-pointer font-bold whitespace-nowrap ${currentView === sub.view ? 'text-black bg-zinc-50' : 'text-zinc-600 hover:bg-zinc-50 hover:text-black'}`}
+                        className={`w-full text-left px-4 py-2 text-xs transition-all cursor-pointer font-bold whitespace-nowrap flex items-center justify-between ${currentView === sub.view ? 'text-black bg-zinc-50' : 'text-zinc-600 hover:bg-zinc-50 hover:text-black'}`}
                       >
-                        {sub.label}
+                        <span>{sub.label}</span>
+                        {sub.view === 'tickets' && openTickets.length > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-500 text-white">
+                            {openTickets.length}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -151,87 +242,138 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
         <div className="relative" ref={notificationsRef}>
           <button 
             onClick={() => setShowNotifications(!showNotifications)}
-            className={`relative w-11 h-11 flex items-center justify-center border border-zinc-200 rounded-full transition-all cursor-pointer ${
-              showNotifications ? 'bg-zinc-100 text-black' : 'text-zinc-500 hover:text-black hover:bg-zinc-50'
+            className={`relative w-11 h-11 flex items-center justify-center border rounded-full transition-all cursor-pointer ${
+              showNotifications 
+                ? 'bg-zinc-100 text-black border-zinc-300' 
+                : totalNotificationBadgeCount > 0 
+                  ? 'border-rose-300 bg-rose-50/50 text-rose-600 hover:bg-rose-100/60' 
+                  : 'border-zinc-200 text-zinc-500 hover:text-black hover:bg-zinc-50'
             }`}
+            title="Notificações e Chamados"
           >
             <Bell className="h-5 w-5" strokeWidth={1.5} />
-            {hasUnread && <span className="absolute top-[10px] right-[10px] block h-2 w-2 rounded-full border-2 border-white bg-red-500" />}
+            {totalNotificationBadgeCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] px-1 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold text-white shadow-md ring-2 ring-white animate-bounce">
+                {totalNotificationBadgeCount > 9 ? '9+' : totalNotificationBadgeCount}
+              </span>
+            )}
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-zinc-200/80 rounded-3xl shadow-2xl py-3 z-50 animate-fade-in font-sans text-left">
+            <div className="absolute right-0 top-full mt-2 w-88 sm:w-96 bg-white border border-zinc-200/90 rounded-3xl shadow-2xl py-3 z-50 animate-fade-in font-sans text-left">
               <div className="px-5 py-3 border-b border-zinc-100 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider block">Notificações</span>
-                  <p className="text-sm font-black text-zinc-900 leading-tight">Suas atualizações</p>
+                  <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-wider block">Central de Notificações</span>
+                  <p className="text-sm font-black text-zinc-900 leading-tight">Atualizações & Chamados</p>
                 </div>
-                {hasUnread && <div className="text-[10px] font-medium text-zinc-500">3 Novas</div>}
+                {totalNotificationBadgeCount > 0 ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500 text-white">
+                    {totalNotificationBadgeCount} Novas
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-zinc-400">Em dia</span>
+                )}
               </div>
 
-              <div className="flex flex-col py-2 max-h-[350px] overflow-auto custom-scrollbar">
+              <div className="flex flex-col py-2 max-h-[380px] overflow-auto custom-scrollbar divide-y divide-zinc-100">
                 
+                {/* Tickets from Clients */}
+                {liveTickets.length > 0 && liveTickets.slice(0, 5).map(ticket => {
+                  const isOpen = ticket.status === 'open' || ticket.status === 'aberto' || !ticket.status;
+                  const isUnread = !readTicketIds.includes(ticket.id);
+                  const isUrgent = ticket.priority === 'urgente' || ticket.priority === 'critical' || ticket.category === 'urgencia';
+
+                  return (
+                    <div 
+                      key={ticket.id} 
+                      onClick={() => handleTicketClick(ticket.id)}
+                      className={`px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group ${
+                        isUnread ? 'bg-rose-50/30' : ''
+                      }`}
+                    >
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                        isUrgent 
+                          ? 'bg-rose-100 text-rose-600 ring-2 ring-rose-500/20' 
+                          : 'bg-[#D7FE03]/20 text-zinc-900 border border-[#D7FE03]/40'
+                      }`}>
+                        <LifeBuoy className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="text-xs font-bold text-zinc-900 group-hover:text-blue-600 transition-colors truncate">
+                            {ticket.title || 'Chamado de Suporte'}
+                          </p>
+                          {isOpen && (
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-rose-500 text-white shrink-0">
+                              Aberto
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-zinc-600 mt-0.5 line-clamp-1">
+                          Cliente: <strong className="text-zinc-800 font-semibold">{ticket.clientName || ticket.client || ticket.clientId}</strong>
+                        </p>
+
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-zinc-400 font-mono">
+                          <span>{ticket.protocol || ticket.id}</span>
+                          <span>•</span>
+                          <span>{ticket.createdAt ? new Date(ticket.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Recente'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Due clients alerts */}
                 {dueClients.length > 0 && dueClients.map(client => (
-                  <div key={client.id} className="px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group">
-                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                      <Bell className="w-4 h-4 text-red-600" />
+                  <div 
+                    key={client.id} 
+                    onClick={() => {
+                      setShowNotifications(false);
+                      onNavigate?.('finance');
+                    }}
+                    className="px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                      <AlertCircle className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-zinc-900 group-hover:text-accent transition-colors">Vencimento Hoje</p>
+                      <p className="text-xs font-bold text-zinc-900 group-hover:text-accent transition-colors">Vencimento de Mensalidade</p>
                       <p className="text-xs text-zinc-500 mt-0.5 leading-snug">
                         A mensalidade do cliente <span className="font-semibold text-zinc-700">{client.name}</span> vence hoje.
                       </p>
-                      <span className="text-[10px] text-zinc-400 font-medium mt-1.5 block">Agora mesmo</span>
+                      <span className="text-[10px] text-zinc-400 font-medium mt-1 block">Hoje</span>
                     </div>
                   </div>
                 ))}
 
-                {dueClients.length === 0 && (
-                  <div className="px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group">
-                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                      <Bell className="w-4 h-4 text-red-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-zinc-900 group-hover:text-accent transition-colors">Vencimento Hoje</p>
-                      <p className="text-xs text-zinc-500 mt-0.5 leading-snug">
-                        O cliente <span className="font-semibold text-zinc-700">Marcenaria Sheiffer</span> vence hoje.
-                      </p>
-                      <span className="text-[10px] text-zinc-400 font-medium mt-1.5 block">Há 5 min</span>
-                    </div>
+                {liveTickets.length === 0 && dueClients.length === 0 && (
+                  <div className="py-8 text-center px-4">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+                    <p className="text-xs font-bold text-zinc-700">Nenhuma notificação pendente</p>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">Todos os chamados e vencimentos estão em dia.</p>
                   </div>
                 )}
 
-                <div className="px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                    <Calendar className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-zinc-900 group-hover:text-accent transition-colors">Compromisso</p>
-                    <p className="text-xs text-zinc-500 mt-0.5 leading-snug">
-                      Hoje você tem um compromisso agendado às 14:00.
-                    </p>
-                    <span className="text-[10px] text-zinc-400 font-medium mt-1.5 block">Há 2 horas</span>
-                  </div>
-                </div>
-
-                <div className="px-5 py-3 hover:bg-zinc-50 transition-colors flex gap-3 cursor-pointer group">
-                  <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-zinc-900 group-hover:text-accent transition-colors">Tarefa Pendente</p>
-                    <p className="text-xs text-zinc-500 mt-0.5 leading-snug">
-                      Você tem uma nova tarefa para concluir até o final do dia.
-                    </p>
-                    <span className="text-[10px] text-zinc-400 font-medium mt-1.5 block">Ontem</span>
-                  </div>
-                </div>
-
               </div>
 
-              <div className="px-5 pt-3 pb-1 border-t border-zinc-100">
-                <button onClick={() => setHasUnread(false)} className="w-full py-2 text-xs font-bold text-zinc-500 hover:text-black hover:bg-zinc-100 rounded-xl transition-colors cursor-pointer">
-                  Marcar todas como lidas
+              <div className="px-4 pt-2.5 pb-1 border-t border-zinc-100 flex items-center justify-between gap-2">
+                <button 
+                  onClick={markAllAsRead} 
+                  className="py-1.5 px-3 text-[11px] font-bold text-zinc-500 hover:text-black hover:bg-zinc-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Marcar como lidas
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowNotifications(false);
+                    onNavigate?.('tickets');
+                  }}
+                  className="py-1.5 px-3 text-[11px] font-bold bg-[#D7FE03] hover:bg-[#c8ee02] text-black rounded-xl transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                >
+                  <span>Ver Central de Tickets</span>
+                  <ArrowRight className="w-3 h-3" />
                 </button>
               </div>
             </div>

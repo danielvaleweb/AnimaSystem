@@ -17,11 +17,13 @@ import { InvestmentsView } from './components/investments/InvestmentsView';
 import { AgendaView } from './components/agenda/AgendaView';
 import { NocHubDashboard } from './components/dashboard/NocHubDashboard';
 import { LandingPage } from './components/landing/LandingPage';
+import { TrialPage } from './components/trial/TrialPage';
 import { PortfolioPage } from './components/portfolio/PortfolioPage';
 import PlanDetailView from './components/plans/PlanDetailView';
 import CheckoutView from "./components/plans/CheckoutView";
 import AddServicesView from "./components/plans/AddServicesView";
 import ClientAdminView from "./components/plans/ClientAdminView";
+import { ClientSupportPage } from './components/support/ClientSupportPage';
 import { CollaboratorAuthView } from './components/CollaboratorAuthView';
 import { 
   DollarSign, 
@@ -116,6 +118,12 @@ function SmartRootRoute() {
   const searchParams = new URLSearchParams(location.search);
   const page = searchParams.get('page');
 
+  if (page === 'suporte' || page === 'suporte-cliente' || location.pathname.startsWith('/suporte-cliente')) {
+    return <ClientSupportPage />;
+  }
+  if (page === 'trial' || page === 'demonstracao') {
+    return <TrialPage />;
+  }
   if (page === 'checkout' || searchParams.has('isRenewal') || searchParams.has('renov') || searchParams.get('plan') === 'renovacao') {
     return <CheckoutView />;
   }
@@ -134,9 +142,21 @@ function SmartRootRoute() {
 
 function AppRoutes() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentUser, setCurrentUser] = useState<User | null | undefined>(undefined);
   const [userRole, setUserRole] = useState<'collaborator' | 'client' | null>(null);
   const [clientDocId, setClientDocId] = useState<string | null>(null);
+
+  // If the user is accessing the client support portal (e.g. /suporte-cliente-id=..., /suporte-cliente/..., /suporte),
+  // always render the ClientSupportPage directly regardless of auth state!
+  if (
+    location.pathname.startsWith('/suporte') ||
+    location.pathname.includes('suporte-cliente') ||
+    location.search.includes('page=suporte') ||
+    location.search.includes('suporte')
+  ) {
+    return <ClientSupportPage />;
+  }
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -206,6 +226,10 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/" element={<Navigate to={`/cliente/${clientDocId}`} replace />} />
+        <Route path="/suporte/*" element={<ClientSupportPage />} />
+        <Route path="/suporte" element={<ClientSupportPage />} />
+        <Route path="/trial" element={<TrialPage />} />
+        <Route path="/demonstracao" element={<TrialPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/planos/:planName" element={<PlanDetailView />} />
         <Route path="/plano/:planName" element={<PlanDetailView />} />
@@ -230,6 +254,10 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/" element={<SmartRootRoute />} />
+        <Route path="/suporte/*" element={<ClientSupportPage />} />
+        <Route path="/suporte" element={<ClientSupportPage />} />
+        <Route path="/trial" element={<TrialPage />} />
+        <Route path="/demonstracao" element={<TrialPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/planos/:planName" element={<PlanDetailView />} />
         <Route path="/plano/:planName" element={<PlanDetailView />} />
@@ -261,6 +289,10 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<SmartRootRoute />} />
+      <Route path="/suporte/*" element={<ClientSupportPage />} />
+      <Route path="/suporte" element={<ClientSupportPage />} />
+      <Route path="/trial" element={<TrialPage />} />
+      <Route path="/demonstracao" element={<TrialPage />} />
       <Route path="/portfolio" element={<PortfolioPage />} />
       <Route path="/planos/:planName" element={<PlanDetailView />} />
       <Route path="/plano/:planName" element={<PlanDetailView />} />

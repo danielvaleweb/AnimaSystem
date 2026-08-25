@@ -140,6 +140,7 @@ export interface ClientData {
   companyAddress?: string;
   companyInscricaoEstadual?: string;
   nextRenewalDate?: string; // YYYY-MM-DD
+  renewalDate?: string; // YYYY-MM-DD
   lastRenewalPaidAt?: string;
   renewalMonthsPaid?: number;
   domainContractDate?: string; // YYYY-MM-DD

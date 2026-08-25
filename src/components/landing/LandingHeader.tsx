@@ -12,6 +12,7 @@ interface LandingHeaderProps {
   currentUserPortalLink: string;
   onOpenLoginModal: () => void;
   onOpenDemoModal: () => void;
+  isDarkMode?: boolean;
 }
 
 export function LandingHeader({
@@ -20,7 +21,8 @@ export function LandingHeader({
   currentUserName,
   currentUserPortalLink,
   onOpenLoginModal,
-  onOpenDemoModal
+  onOpenDemoModal,
+  isDarkMode = false
 }: LandingHeaderProps) {
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
@@ -136,28 +138,39 @@ export function LandingHeader({
 
   return (
     <header 
-      className={`sticky top-0 z-50 w-full transition-all duration-300 pointer-events-auto ${
-        isScrolled 
-          ? "bg-white/95 backdrop-blur-md border-b border-zinc-200/80 shadow-xs" 
-          : "bg-[#F8F9FA] border-b border-transparent"
+      className={`fixed top-0 left-0 right-0 z-50 w-full transition-all duration-300 pointer-events-auto ${
+        isDarkMode
+          ? isScrolled 
+            ? "bg-[#070709]/85 backdrop-blur-xl border-b border-zinc-800/60 shadow-xl text-white" 
+            : "bg-transparent border-b border-transparent text-white"
+          : isScrolled 
+            ? "bg-white/90 backdrop-blur-md border-b border-zinc-200/80 shadow-xs text-zinc-900" 
+            : "bg-transparent border-b border-transparent text-zinc-900"
       }`}
     >
       <div className="w-full px-6 sm:px-10 lg:px-16 xl:px-20 h-20 flex items-center justify-between transition-all">
         
-        {/* Brand Logo "AnimaSystem" with solid black lightning icon (no effects, no shadow) */}
+        {/* Brand Logo "AnimaSystem" */}
         <div 
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all shrink-0 select-none"
+          className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all shrink-0 select-none group"
         >
-          <Zap className="w-8 h-8 text-black fill-black" />
+          {isDarkMode ? (
+            <div className="relative flex items-center justify-center">
+              <Zap className="w-8 h-8 text-[#D7FE03] fill-[#D7FE03] drop-shadow-[0_0_12px_rgba(215,254,3,0.85)] filter group-hover:drop-shadow-[0_0_18px_rgba(215,254,3,1)] transition-all" />
+              <div className="absolute inset-0 bg-[#D7FE03]/20 blur-md rounded-full -z-10" />
+            </div>
+          ) : (
+            <Zap className="w-8 h-8 text-black fill-black" />
+          )}
           <span className="text-2xl font-sans tracking-tight select-none">
             <span className="font-light text-zinc-400">Anima</span>
-            <span className="font-bold text-black tracking-tight">System</span>
+            <span className={`font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-black'}`}>System</span>
           </span>
         </div>
 
         {/* Desktop Navigation - Dashboard Style Pill Menu */}
-        <nav className="hidden lg:flex items-center gap-1.5 font-medium text-zinc-600">
+        <nav className={`hidden lg:flex items-center gap-1.5 font-medium ${isDarkMode ? 'text-zinc-300' : 'text-zinc-600'}`}>
           
           {/* 1. Planos Dropdown */}
           <div
@@ -170,8 +183,8 @@ export function LandingHeader({
               onClick={() => setPlansDropdownOpen(!plansDropdownOpen)}
               className={`px-4 py-2 rounded-full text-xs transition-all font-semibold whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                 plansDropdownOpen 
-                  ? 'bg-black text-white shadow-xs font-bold' 
-                  : 'text-zinc-600 hover:text-black font-medium hover:bg-zinc-50'
+                  ? isDarkMode ? 'bg-zinc-800 text-white shadow-xs font-bold' : 'bg-black text-white shadow-xs font-bold' 
+                  : isDarkMode ? 'text-zinc-300 hover:text-white font-medium hover:bg-zinc-800/60' : 'text-zinc-600 hover:text-black font-medium hover:bg-zinc-50'
               }`}
             >
               <span>Planos</span>
@@ -187,8 +200,10 @@ export function LandingHeader({
                   transition={{ duration: 0.15 }}
                   className="absolute top-full left-1/2 -translate-x-1/2 pt-2 z-50"
                 >
-                  <div className="w-80 bg-white rounded-3xl shadow-xl border border-zinc-200/80 p-3 space-y-1.5 text-left">
-                    <div className="px-3 py-1 mb-1 border-b border-zinc-100">
+                  <div className={`w-80 rounded-3xl shadow-xl border p-3 space-y-1.5 text-left ${
+                    isDarkMode ? 'bg-[#141416] border-zinc-800 text-white' : 'bg-white border-zinc-200/80 text-zinc-900'
+                  }`}>
+                    <div className={`px-3 py-1 mb-1 border-b ${isDarkMode ? 'border-zinc-800' : 'border-zinc-100'}`}>
                       <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Escolha o seu plano</span>
                     </div>
 
@@ -199,33 +214,33 @@ export function LandingHeader({
                         onClick={() => setPlansDropdownOpen(false)}
                         className={`flex items-start justify-between p-2.5 rounded-2xl transition-all ${
                           plan.highlight
-                            ? 'bg-zinc-50 border border-zinc-200/90'
-                            : 'hover:bg-zinc-50'
+                            ? isDarkMode ? 'bg-zinc-850 border border-zinc-700' : 'bg-zinc-50 border border-zinc-200/90'
+                            : isDarkMode ? 'hover:bg-zinc-800/80' : 'hover:bg-zinc-50'
                         }`}
                       >
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-zinc-900">{plan.name}</span>
+                            <span className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>{plan.name}</span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                               plan.highlight
                                 ? 'bg-[#D7FE03] text-black'
-                                : 'bg-zinc-100 text-zinc-700'
+                                : isDarkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-100 text-zinc-700'
                             }`}>
                               {plan.badge}
                             </span>
                           </div>
-                          <p className="text-[11px] text-zinc-500 leading-tight">
+                          <p className={`text-[11px] leading-tight ${isDarkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
                             {plan.subtitle}
                           </p>
                         </div>
                       </a>
                     ))}
 
-                    <div className="pt-2 border-t border-zinc-100 text-center">
+                    <div className={`pt-2 border-t text-center ${isDarkMode ? 'border-zinc-800' : 'border-zinc-100'}`}>
                       <a
                         href="#planos"
                         onClick={() => setPlansDropdownOpen(false)}
-                        className="text-xs font-bold text-zinc-800 hover:text-black block py-1"
+                        className={`text-xs font-bold block py-1 ${isDarkMode ? 'text-zinc-300 hover:text-white' : 'text-zinc-800 hover:text-black'}`}
                       >
                         Ver tabela comparativa completa →
                       </a>
@@ -239,7 +254,9 @@ export function LandingHeader({
           {/* 2. Sobre nós */}
           <a
             href="#sobre"
-            className="px-4 py-2 rounded-full text-xs text-zinc-600 hover:text-black font-medium hover:bg-zinc-50 transition-all whitespace-nowrap"
+            className={`px-4 py-2 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+              isDarkMode ? 'text-zinc-300 hover:text-white hover:bg-zinc-800/60' : 'text-zinc-600 hover:text-black hover:bg-zinc-50'
+            }`}
           >
             Sobre nós
           </a>
@@ -251,10 +268,10 @@ export function LandingHeader({
           {currentUser ? (
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                <div className="text-xs font-semibold text-zinc-900">Olá, {currentUserName}</div>
+                <div className={`text-xs font-semibold ${isDarkMode ? 'text-white' : 'text-zinc-900'}`}>Olá, {currentUserName}</div>
                 <button
                   onClick={() => navigate(currentUserPortalLink || '/admin')}
-                  className="text-[11px] text-black hover:text-zinc-600 font-bold"
+                  className={`text-[11px] font-bold ${isDarkMode ? 'text-[#D7FE03] hover:underline' : 'text-black hover:text-zinc-600'}`}
                 >
                   Painel do Usuário →
                 </button>
@@ -265,7 +282,9 @@ export function LandingHeader({
                   navigate('/');
                 }}
                 title="Sair"
-                className="p-2 rounded-full hover:bg-zinc-100 text-zinc-500 hover:text-rose-600 transition-colors"
+                className={`p-2 rounded-full transition-colors ${
+                  isDarkMode ? 'hover:bg-zinc-800 text-zinc-400 hover:text-rose-400' : 'hover:bg-zinc-100 text-zinc-500 hover:text-rose-600'
+                }`}
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -274,9 +293,13 @@ export function LandingHeader({
             <>
               <button
                 onClick={onOpenLoginModal}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-zinc-700 hover:text-black hover:bg-zinc-100 transition-colors cursor-pointer border border-zinc-200/80"
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-colors cursor-pointer border ${
+                  isDarkMode 
+                    ? 'text-zinc-200 hover:text-white hover:bg-zinc-800 border-zinc-700' 
+                    : 'text-zinc-700 hover:text-black hover:bg-zinc-100 border-zinc-200/80'
+                }`}
               >
-                <User className="w-3.5 h-3.5 text-zinc-500" />
+                <User className="w-3.5 h-3.5 text-zinc-400" />
                 <span>Entrar</span>
               </button>
               <button
@@ -292,7 +315,9 @@ export function LandingHeader({
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden p-2 rounded-full text-zinc-600 hover:text-black hover:bg-zinc-100"
+            className={`lg:hidden p-2 rounded-full ${
+              isDarkMode ? 'text-zinc-300 hover:text-white hover:bg-zinc-800' : 'text-zinc-600 hover:text-black hover:bg-zinc-100'
+            }`}
             aria-label="Abrir menu"
           >
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
