@@ -2281,6 +2281,177 @@ async function startServer() {
     }
   });
 
+  // --- EMAIL VERIFICATION FOR CLIENT REGISTRATION ---
+  app.post("/api/send-verification-code", async (req, res) => {
+    try {
+      const { email, code, clientName } = req.body;
+      if (!email || !code) {
+        return res.status(400).json({ error: "E-mail e código são obrigatórios." });
+      }
+
+      console.log(`[Verification] Sending 4-digit code ${code} to ${email} (${clientName || 'Cliente'})`);
+
+      // 1. Store in Firestore verification_codes collection for validation & audit
+      try {
+        await addDoc(collection(db, "verification_codes"), {
+          email: email.trim().toLowerCase(),
+          code: String(code).trim(),
+          clientName: clientName || "Cliente",
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 mins
+          used: false
+        });
+      } catch (dbErr) {
+        console.warn("[Verification] Firestore log warning:", dbErr);
+      }
+
+      // 2. Send via Nodemailer if SMTP is configured
+      let emailSent = false;
+      let smtpErrorMessage = "";
+
+      const smtpHost = process.env.SMTP_HOST || "smtp.umbler.com";
+      const smtpPort = Number(process.env.SMTP_PORT) || 587;
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPass = process.env.SMTP_PASS;
+      const smtpFrom = process.env.SMTP_FROM || (smtpUser ? `"AnimaSystem" <${smtpUser}>` : undefined);
+
+      if (smtpUser && smtpPass) {
+        try {
+          const nodemailer = await import("nodemailer");
+          const isSecure = smtpPort === 465;
+
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: smtpPort,
+            secure: isSecure, // true for 465 (SSL), false for 587 (TLS/STARTTLS)
+            auth: {
+              user: smtpUser.trim(),
+              pass: smtpPass.trim(),
+            },
+            tls: {
+              rejectUnauthorized: false, // Prevents self-signed or chain issues in container
+            },
+            connectionTimeout: 12000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
+          });
+
+          // Ensure the 'from' address uses the authenticated user to satisfy Umbler anti-spoofing policy
+          const safeFrom = smtpFrom?.includes("<") 
+            ? smtpFrom 
+            : `"AnimaSystem" <${smtpUser.trim()}>`;
+
+          const mailOptions = {
+            from: safeFrom,
+            to: email.trim(),
+            subject: `Código de Ativação AnimaSystem: ${code}`,
+            text: `Olá ${clientName || 'Cliente'}! Seu código de liberação do Painel do Cliente AnimaSystem é: ${code}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 540px; margin: 0 auto; background-color: #0d1117; color: #ffffff; padding: 32px; border-radius: 16px; border: 1px solid #21262d;">
+                <div style="text-align: center; margin-bottom: 24px;">
+                  <span style="font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: #ffffff;">Anima<span style="color: #D7FE03;">System</span></span>
+                </div>
+                <div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; text-align: center;">
+                  <h2 style="font-size: 18px; font-weight: 700; margin-top: 0; margin-bottom: 12px; color: #f0f6fc;">Código de Liberação do Painel</h2>
+                  <p style="font-size: 14px; color: #8b949e; margin-bottom: 24px; line-height: 1.5;">
+                    Olá, <strong>${clientName || 'Cliente'}</strong>! Utilize o código de 4 dígitos abaixo para confirmar seu e-mail e liberar o acesso ao seu Painel do Cliente:
+                  </p>
+                  <div style="display: inline-block; background-color: #0d1117; border: 2px dashed #D7FE03; border-radius: 12px; padding: 16px 32px; margin-bottom: 24px;">
+                    <span style="font-size: 36px; font-weight: 900; letter-spacing: 12px; color: #D7FE03; font-family: monospace;">${code}</span>
+                  </div>
+                  <p style="font-size: 12px; color: #6e7681; margin: 0;">
+                    Este código é válido por <strong>15 minutos</strong>. Se você não solicitou este cadastro, ignore esta mensagem com segurança.
+                  </p>
+                </div>
+                <div style="text-align: center; margin-top: 24px; font-size: 11px; color: #484f58;">
+                  &copy; ${new Date().getFullYear()} AnimaSystem - Todos os direitos reservados.
+                </div>
+              </div>
+            `
+          };
+
+          const info = await transporter.sendMail(mailOptions);
+          emailSent = true;
+          console.log(`[Verification] Email sent successfully via SMTP (${smtpHost}) to ${email}. MessageId: ${info.messageId}`);
+        } catch (smtpErr: any) {
+          smtpErrorMessage = smtpErr.message || String(smtpErr);
+          console.error(`[Verification] SMTP sending failed on host ${smtpHost}:${smtpPort}:`, smtpErr);
+        }
+      } else {
+        console.warn("[Verification] SMTP_USER or SMTP_PASS not set in environment secrets.");
+      }
+
+      return res.json({
+        success: true,
+        emailSent,
+        smtpError: smtpErrorMessage || undefined,
+        message: emailSent 
+          ? "Código de 4 dígitos enviado com sucesso para o seu e-mail." 
+          : "Código gerado com sucesso."
+      });
+    } catch (err: any) {
+      console.error("[Verification] Error processing verification code:", err);
+      return res.status(500).json({ error: "Erro ao processar envio do código." });
+    }
+  });
+
+  // Diagnostic endpoint to test SMTP settings
+  app.post("/api/test-smtp", async (req, res) => {
+    try {
+      const { testEmail } = req.body;
+      const smtpHost = process.env.SMTP_HOST || "smtp.umbler.com";
+      const smtpPort = Number(process.env.SMTP_PORT) || 587;
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPass = process.env.SMTP_PASS;
+
+      if (!smtpUser || !smtpPass) {
+        return res.status(400).json({
+          success: false,
+          error: "Variáveis de ambiente SMTP_USER ou SMTP_PASS não estão configuradas nos Secrets."
+        });
+      }
+
+      const nodemailer = await import("nodemailer");
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: {
+          user: smtpUser.trim(),
+          pass: smtpPass.trim(),
+        },
+        tls: {
+          rejectUnauthorized: false
+        },
+        connectionTimeout: 10000
+      });
+
+      // Verify connection
+      await transporter.verify();
+
+      if (testEmail) {
+        await transporter.sendMail({
+          from: `"AnimaSystem" <${smtpUser.trim()}>`,
+          to: testEmail,
+          subject: "Teste de Envio SMTP - AnimaSystem",
+          text: "Configuração SMTP do Umbler validada com sucesso!",
+          html: "<p>Configuração SMTP do <strong>Umbler</strong> validada com sucesso!</p>"
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: "Conexão SMTP validada com sucesso com o servidor " + smtpHost
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Erro na verificação SMTP",
+        code: err.code
+      });
+    }
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
