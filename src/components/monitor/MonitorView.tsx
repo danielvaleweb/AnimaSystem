@@ -308,11 +308,12 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
     // 1. Fetch GCP metrics if we have a Project ID
     if (selectedClient.firebaseProjectId) {
       try {
-        let qs = `projectId=${encodeURIComponent(selectedClient.firebaseProjectId)}&clientName=${encodeURIComponent(selectedClient.name)}`;
+        const clientDbName = selectedClient.firebaseDatabaseName?.trim() || '(default)';
+        let qs = `projectId=${encodeURIComponent(selectedClient.firebaseProjectId)}&clientName=${encodeURIComponent(selectedClient.name)}&databaseId=${encodeURIComponent(clientDbName)}`;
         
         const now = new Date();
         let endD = now.toISOString();
-        let startD = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        let startD = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
         
         if (timeRange === 'custom' && customStart && customEnd) {
           startD = new Date(customStart).toISOString();
@@ -321,8 +322,10 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
           endD = dEnd.toISOString();
         } else if (timeRange === '7d') {
           startD = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        } else if (timeRange === '30d') {
+          startD = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
         } else if (timeRange === '1d') {
-          startD = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString();
+          startD = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
         }
         
         qs += `&startDate=${encodeURIComponent(startD)}&endDate=${encodeURIComponent(endD)}`;
@@ -972,15 +975,12 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
       <div className="flex-1 w-full flex flex-col">
         {/* Consumo de Cotas Limits */}
         <div className="bg-white border border-zinc-200/80 rounded-[2rem] p-4 sm:p-6 lg:p-8 flex flex-col">
-           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
               <h3 className="font-display text-lg font-bold flex items-center gap-2 text-black">
                  <Zap className="w-5 h-5 text-accent shrink-0" />
                  <span>Métricas do Google Cloud Monitoring</span>
               </h3>
               <div className="flex flex-col sm:flex-row flex-wrap items-center gap-2 shrink-0">
-  
-  
-                
   
                 {/* Custom TimeRange Selector (Anchored Overlay) */}
                 <div className="relative w-full sm:w-44">
@@ -1013,9 +1013,9 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
                           style={{ transformOrigin: 'top' }}
                         >
                           {[
-                            { val: '30d', label: 'Últimos 30 Dias' },
-                            { val: '7d', label: 'Últimos 7 Dias' },
                             { val: '1d', label: 'Últimas 24h' },
+                            { val: '7d', label: 'Últimos 7 Dias' },
+                            { val: '30d', label: 'Últimos 30 Dias' },
                             { val: 'custom', label: 'Personalizado' }
                           ].map(item => (
                             <button
@@ -1105,89 +1105,155 @@ export function MonitorView({ onNavigate }: { onNavigate?: (v: any, id?: string)
                     </div>
                   )}
 
-                  {!discoveryResults && [
-                    { label: "Leituras", key: "reads_billable", data: gcpMetrics.reads_billable?.value > 0 ? gcpMetrics.reads_billable : gcpMetrics.reads_ops, costPer100k: 0.036, freeTier: 50000, suffix: " / dia" },
-                    { label: "Gravações", key: "writes_billable", data: gcpMetrics.writes_billable?.value > 0 ? gcpMetrics.writes_billable : gcpMetrics.writes_ops, costPer100k: 0.108, freeTier: 20000, suffix: " / dia" },
-                    { label: "Leituras em tempo real", key: "realtime_billable", data: gcpMetrics.realtime_billable?.value > 0 ? gcpMetrics.realtime_billable : gcpMetrics.realtime, costPer100k: 0, freeTier: 50000, suffix: " / dia" }
-                  ].map((item, idx) => {
-                    const debugInfo = gcpMetrics.debug?.find((d: any) => d.metricName === item.key);
-                    const val = item.data?.value || 0;
-                    
-                    const valAfterFreeTier = Math.max(0, val - item.freeTier);
-                    const USD_TO_BRL = 5.20;
-                    const estimatedCostUSD = item.costPer100k > 0 ? (valAfterFreeTier / 100000) * item.costPer100k : 0;
-                    const estimatedCostBRL = estimatedCostUSD * USD_TO_BRL;
-                    
-                    const progressPercent = item.freeTier > 0 ? Math.min(100, (val / item.freeTier) * 100) : 0;
-                    const isOverLimit = item.freeTier > 0 ? val > item.freeTier : false;
-                    
-                    let progressColorClass = "from-emerald-500 to-emerald-400";
-                    if (progressPercent > 50 && progressPercent <= 80) {
-                      progressColorClass = "from-yellow-500 to-yellow-400";
-                    } else if (progressPercent > 80 || isOverLimit) {
-                      progressColorClass = "from-rose-500 to-rose-400";
-                    }
-                    
-                    return (
-                    <div key={idx} className="bg-white p-4 rounded-xl border border-zinc-200/80">
-                      <div className="flex justify-between items-center mb-1">
-                          <div className="flex items-center gap-2">
-                             <span className="font-medium text-sm text-zinc-700">{item.label}</span>
-                             {item.freeTier > 0 && (
-                               <span className="text-[10px] bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded">Isento até {item.freeTier.toLocaleString()}{item.suffix}</span>
-                             )}
-                          </div>
-                          <span className="font-bold text-lg text-zinc-900">
-                            {val.toLocaleString()}
+                  {/* Period & Database Status Banner */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-zinc-50 border border-zinc-200/80 rounded-xl text-xs text-zinc-600 col-span-full">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-zinc-500 shrink-0" />
+                      <span>
+                        Janela consultada: <strong className="text-zinc-900 font-semibold">{timeRange === '1d' ? 'Últimas 24 horas' : timeRange === '7d' ? 'Últimos 7 dias' : timeRange === '30d' ? 'Últimos 30 dias' : 'Personalizado'}</strong>
+                        {gcpMetrics.queryPeriod?.start && (
+                          <span className="ml-1 text-zinc-500">
+                            ({new Date(gcpMetrics.queryPeriod.start).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} - {new Date(gcpMetrics.queryPeriod.end).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })})
                           </span>
-                      </div>
-                      
-                      {debugMode && (
-                        <div className="text-xs text-zinc-600 font-mono break-all mb-3">{item.data?.metric}</div>
-                      )}
-
-                      {item.freeTier > 0 && (
-                         <div className="w-full bg-white rounded-full h-3 mb-4 overflow-hidden border border-zinc-200 relative mt-2">
-                            <div 
-                              className={cn("h-full transition-all duration-500 rounded-full bg-gradient-to-r", progressColorClass)}
-                              style={{ width: progressPercent + '%' }}
-                            />
-                         </div>
-                      )}
-
-                      {item.costPer100k > 0 && (
-                         <div className="flex justify-between items-center text-xs p-2 rounded bg-white border border-zinc-200">
-                            <span className="text-zinc-500">Estimativa de consumo:</span>
-                            {estimatedCostBRL > 0 ? (
-                               <span className="text-emerald-600 font-medium">~R$ {estimatedCostBRL.toFixed(4)} BRL</span>
-                            ) : (
-                               <span className="text-zinc-500 font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]">Dentro do limite gratuito</span>
-                            )}
-                         </div>
-                      )}
-                      
-                      {item.key === 'realtime text-zinc-500' && (
-                         <div className="flex justify-between items-center text-xs p-2 rounded bg-white border border-zinc-200">
-                            <span className="text-zinc-500">Estimativa de consumo:</span>
-                            <span className="text-emerald-600 font-medium font-mono">Incluído nas Leituras</span>
-                         </div>
-                      )}
-
-                      {debugMode && debugInfo && (
-                          <div className="mt-3 p-3 bg-black/40 rounded border border-zinc-200 overflow-x-auto text-xs text-zinc-500 font-mono space-y-1">
-                             <div className="text-emerald-500 font-bold mb-2">=== {item.label} ===</div>
-                             <div><span className="text-zinc-500">Nome da métrica:</span> {debugInfo.metricName}</div>
-                             <div><span className="text-zinc-500">Filtro utilizado:</span> {debugInfo.request?.filter}</div>
-                             <div><span className="text-zinc-500">Quant. de Séries:</span> {debugInfo.returnedSeriesCount}</div>
-                             <div><span className="text-zinc-500">Séries Agregadas/Pontos:</span> {debugInfo.rawPoints} pt(s)</div>
-                             <div><span className="text-zinc-500">Valor Bruto Retornado:</span> {debugInfo.returnedValue}</div>
-                             <div><span className="text-zinc-500">Valor Agregado (UI):</span> {item.data?.value}</div>
-                             <div><span className="text-zinc-500">Janela Consultada:</span> {new Date(debugInfo.request?.interval?.startTime?.seconds * 1000).toLocaleDateString()} a {new Date(debugInfo.request?.interval?.endTime?.seconds * 1000).toLocaleDateString()}</div>
-                             <div><span className="text-zinc-500">Tempo de Consulta:</span> {debugInfo.queryTimeMs} ms</div>
-                          </div>
-                      )}
+                        )}
+                      </span>
                     </div>
-                  )})}
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Banco configurado: <span className="text-zinc-900 font-semibold font-mono bg-white px-2 py-0.5 rounded border border-zinc-200">{selectedClient?.firebaseDatabaseName?.trim() || '(default)'}</span></span>
+                    </div>
+                  </div>
+
+                  {!discoveryResults && (() => {
+                    const readsVal = Math.max(gcpMetrics.reads_ops?.value || 0, gcpMetrics.reads_billable?.value || 0, gcpMetrics.reads_count?.value || 0);
+                    const writesVal = gcpMetrics.writes_pure !== undefined ? gcpMetrics.writes_pure : Math.max(0, (gcpMetrics.writes_ops?.value || 0) - (gcpMetrics.deletes_ops?.value || 0));
+                    const deletesVal = Math.max(gcpMetrics.deletes_ops?.value || 0, gcpMetrics.deletes_count?.value || 0);
+                    const realtimeVal = Math.max(gcpMetrics.realtime_billable?.value || 0, gcpMetrics.realtime?.value || 0);
+
+                    const metricCards = [
+                      { 
+                        label: "Leituras", 
+                        key: "reads", 
+                        value: readsVal,
+                        data: (gcpMetrics.reads_ops?.value || 0) > 0 ? gcpMetrics.reads_ops : ((gcpMetrics.reads_billable?.value || 0) > 0 ? gcpMetrics.reads_billable : (gcpMetrics.reads_count || gcpMetrics.reads_ops)), 
+                        costPer100k: 0.036, 
+                        freeTier: 50000, 
+                        suffix: " / dia" 
+                      },
+                      { 
+                        label: "Gravações", 
+                        key: "writes", 
+                        value: writesVal,
+                        data: (gcpMetrics.writes_ops?.value || 0) > 0 ? gcpMetrics.writes_ops : ((gcpMetrics.writes_billable?.value || 0) > 0 ? gcpMetrics.writes_billable : (gcpMetrics.writes_count || gcpMetrics.writes_ops)), 
+                        costPer100k: 0.108, 
+                        freeTier: 20000, 
+                        suffix: " / dia" 
+                      },
+                      { 
+                        label: "Exclusões", 
+                        key: "deletes", 
+                        value: deletesVal,
+                        data: (gcpMetrics.deletes_ops?.value || 0) > 0 ? gcpMetrics.deletes_ops : (gcpMetrics.deletes_count || gcpMetrics.deletes_ops), 
+                        costPer100k: 0.018, 
+                        freeTier: 20000, 
+                        suffix: " / dia" 
+                      },
+                      { 
+                        label: "Leituras em tempo real", 
+                        key: "realtime", 
+                        value: realtimeVal,
+                        data: (gcpMetrics.realtime_billable?.value || 0) > 0 ? gcpMetrics.realtime_billable : gcpMetrics.realtime, 
+                        costPer100k: 0, 
+                        freeTier: 50000, 
+                        suffix: " / dia" 
+                      }
+                    ];
+
+                    return (
+                      <>
+                        {metricCards.map((item, idx) => {
+                          const debugInfo = gcpMetrics.debug?.find((d: any) => d.metricName?.includes(item.key) || d.metricName === item.key);
+                          const val = item.value !== undefined ? item.value : (item.data?.value || 0);
+                          
+                          const valAfterFreeTier = Math.max(0, val - item.freeTier);
+                          const USD_TO_BRL = 5.20;
+                          const estimatedCostUSD = item.costPer100k > 0 ? (valAfterFreeTier / 100000) * item.costPer100k : 0;
+                          const estimatedCostBRL = estimatedCostUSD * USD_TO_BRL;
+                          
+                          const progressPercent = item.freeTier > 0 ? Math.min(100, (val / item.freeTier) * 100) : 0;
+                          const isOverLimit = item.freeTier > 0 ? val > item.freeTier : false;
+                          
+                          let progressColorClass = "from-emerald-500 to-emerald-400";
+                          if (progressPercent > 50 && progressPercent <= 80) {
+                            progressColorClass = "from-yellow-500 to-yellow-400";
+                          } else if (progressPercent > 80 || isOverLimit) {
+                            progressColorClass = "from-rose-500 to-rose-400";
+                          }
+                          
+                          return (
+                            <div key={idx} className="bg-white p-4 rounded-xl border border-zinc-200/80">
+                              <div className="flex justify-between items-center mb-1">
+                                  <div className="flex items-center gap-2">
+                                     <span className="font-medium text-sm text-zinc-700">{item.label}</span>
+                                     {item.freeTier > 0 && (
+                                       <span className="text-[10px] bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded">Isento até {item.freeTier.toLocaleString()}{item.suffix}</span>
+                                     )}
+                                  </div>
+                                  <span className="font-bold text-lg text-zinc-900">
+                                    {val.toLocaleString()}
+                                  </span>
+                              </div>
+                              
+                              {debugMode && (
+                                <div className="text-xs text-zinc-600 font-mono break-all mb-3">{item.data?.metric}</div>
+                              )}
+
+                              {item.freeTier > 0 && (
+                                 <div className="w-full bg-white rounded-full h-3 mb-4 overflow-hidden border border-zinc-200 relative mt-2">
+                                    <div 
+                                      className={cn("h-full transition-all duration-500 rounded-full bg-gradient-to-r", progressColorClass)}
+                                      style={{ width: progressPercent + '%' }}
+                                    />
+                                 </div>
+                              )}
+
+                              {item.costPer100k > 0 && (
+                                 <div className="flex justify-between items-center text-xs p-2 rounded bg-white border border-zinc-200">
+                                    <span className="text-zinc-500">Estimativa de consumo:</span>
+                                    {estimatedCostBRL > 0 ? (
+                                       <span className="text-emerald-600 font-medium">~R$ {estimatedCostBRL.toFixed(4)} BRL</span>
+                                    ) : (
+                                       <span className="text-zinc-500 font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]">Dentro do limite gratuito</span>
+                                    )}
+                                 </div>
+                              )}
+                              
+                              {item.key === 'realtime text-zinc-500' && (
+                                 <div className="flex justify-between items-center text-xs p-2 rounded bg-white border border-zinc-200">
+                                    <span className="text-zinc-500">Estimativa de consumo:</span>
+                                    <span className="text-emerald-600 font-medium font-mono">Incluído nas Leituras</span>
+                                 </div>
+                              )}
+
+                              {debugMode && debugInfo && (
+                                  <div className="mt-3 p-3 bg-black/40 rounded border border-zinc-200 overflow-x-auto text-xs text-zinc-500 font-mono space-y-1">
+                                     <div className="text-emerald-500 font-bold mb-2">=== {item.label} ===</div>
+                                     <div><span className="text-zinc-500">Nome da métrica:</span> {debugInfo.metricName}</div>
+                                     <div><span className="text-zinc-500">Filtro utilizado:</span> {debugInfo.request?.filter}</div>
+                                     <div><span className="text-zinc-500">Quant. de Séries:</span> {debugInfo.returnedSeriesCount}</div>
+                                     <div><span className="text-zinc-500">Séries Agregadas/Pontos:</span> {debugInfo.rawPoints} pt(s)</div>
+                                     <div><span className="text-zinc-500">Valor Bruto Retornado:</span> {debugInfo.returnedValue}</div>
+                                     <div><span className="text-zinc-500">Valor Agregado (UI):</span> {item.data?.value}</div>
+                                     <div><span className="text-zinc-500">Janela Consultada:</span> {new Date(debugInfo.request?.interval?.startTime?.seconds * 1000).toLocaleDateString()} a {new Date(debugInfo.request?.interval?.endTime?.seconds * 1000).toLocaleDateString()}</div>
+                                     <div><span className="text-zinc-500">Tempo de Consulta:</span> {debugInfo.queryTimeMs} ms</div>
+                                  </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
 
                   {!discoveryResults && (() => {
                      const storageValGB = (gcpMetrics.storageBytes?.value || 0) / 1024 / 1024 / 1024;

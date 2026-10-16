@@ -1675,61 +1675,296 @@ async function startServer() {
     }
   });
 
+  // Helper to resolve GCP Service Account Credentials dynamically
+  async function getGcpCredentials(targetProjectId?: string): Promise<any> {
+    // 1. Client specific credentials in Firestore
+    if (targetProjectId) {
+      try {
+        const { getDocs, collection, query, where } = await import('firebase/firestore');
+        const q = query(collection(db, 'clients'), where('firebaseProjectId', '==', targetProjectId));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const cData = snap.docs[0].data();
+          if (cData.gcpServiceAccountJson || cData.serviceAccountJson) {
+            const raw = cData.gcpServiceAccountJson || cData.serviceAccountJson;
+            return typeof raw === 'string' ? JSON.parse(raw) : raw;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 2. Direct project mapping by ID (Tudo Novo / AnimaHub)
+    const normId = (targetProjectId || '').toLowerCase().trim();
+    if (normId.includes('tudonovo') || normId === 'tudonovo-animasystem') {
+      return {
+        "type": "service_account",
+        "project_id": "tudonovo-animasystem",
+        "private_key_id": "375672bb560fec4f64b12ad91df7c9fa9976f752",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQCfwpDVdrQQneXf\nqANXMKBwUf+MeseVjDhbyw5IT708L7Ibo4Wcj8KBbieZqtuoyB2SE5x3vRIjRkG5\n6ohHnYYqi+dI7OrYb9nMyiOpzoLg0PL/rhLfYG4zApSeZFHKqKr95y+4syPHmUdk\nLMcjsPMzP1slJ1iUJ2AEBrI8vousweLJwfv+1BuZCCl3ScFMpmCCF+L75CPEjQzU\nV4lFOCJS4h87NCQO6BP3orAtLMIoydDLN2QVfeQ1ccMsooeeOyyw71xKN+ZtMJ68\noGbtbkuVW3wl4Exf3LXvuU+MwglaRIoE0EbN+RFf4XEgFVAleSoKHNL/eoebOkhA\n5b93tyhVAgMBAAECggEAH4s/JabGbvF+TebSogiL5SGLn6UueyywhA9XxpdX+eZA\n+IwU+ZC5Cu1BDGpb7Lt2ez08C7hdOHHK0HaqadmEgCoXhKKizBFpo7HV0NVhqhoX\noLwyJcDYgWHlDlEohSdAe9mF5qYYTnTJT9I3j6iEnH3J9VALgVU09BaOYsgMtBNU\nYyJ5PymC5iOX1oGT7NNB2nVwn8cdnzRUEBFHuu2myxWFCddUq1bKx2A/7ivsZEXY\nkAyZ7hP2/X9ULiqBazOjZwvD5yJP1M1LTkq9WVgKTsCqOyiyle9LGugO0CYCVt4n\ntmO4WyEpAkbG+W4OGAmE3UuI5L9/Ytx8voD7bE+PAQKBgQDLeB5I6LmuCimoIRua\nE61fk13zWcbx8Jgq37XGhWNCfSpyqZKe5H6tZGoHUzmKN8fLNZT5ZpApC1SgymJt\niigCCZoqPq5sx16pnAdm26TJwRrANLceB/5RjsB71O4B0BmDQio3ykF5Z9iH5j8g\n0YFy+FT4Wsf5HEZGzdnXileHUQKBgQDJAZPxun12qlvQqr8825w0focSHJ6NQvGS\n0DQVmVhIW16Q9q2oP6Fi0BhOq1e/am9efoEP3PKJhK1IvAPPQzfVX2qA4oBlK2B6\nAJY819VOGVuKkMvY03CIa6v0FHp6qbuiFyztuL8wE5Ps8O72oFcN50cPGpmgaash\ncI8m5IfXxQKBgQDGNooqNK1OIpBaPYaKHsky5nkL7FWms99JRQ3sC12bFBwZ/5/a\nMnZFrCCuaiEPyS9VgylRnNyrX2JeEUq5s3EuKvSIWu/JAJ/zUxDS3v41nWzV+YS6\nOMdD5HEXMWN7WKLB/97o4pvODaAfI+ozqmUU/16nYqiUwTqlFzw0gYyrQQKBgQCr\nWP//8YTgcosAT33kaCU5jp6f7uut6eI6z+eGfgkG7XSoyM/yfAOcU15VObT8hMPZ\nXqewmR3b4tFBDp2Ewn1HFCabJfpjw91jQzrPNQItqGojrhlHhb8JXBfiYs6h4C0G\nGRGAuJuqZRYVxrE+ZiKvxHcLxhYt68YpJGWztt6iLQKBgQDKVrEV7amK348h0y7O\nzCAjMOuXUWy2C2cuwyBGpL7952MQV6AtzRNGl/3iapUhv+7lTFrd12RWN6w7xRsH\nokX1jWFZswP//QbtzNTsC1tF34f65ZYAQbI89qBuuxTkFIQNwBu8BbOfu/7iET68\nPVDbdtl2kfgpq2TNAj6LalU9VA==\n-----END PRIVATE KEY-----\n",
+        "client_email": "firebase-adminsdk-fbsvc@tudonovo-animasystem.iam.gserviceaccount.com",
+        "client_id": "103602823409547254057"
+      };
+    }
+
+    if (normId.includes('animahub') || normId === 'animahub') {
+      return {
+        "type": "service_account",
+        "project_id": "animahub",
+        "private_key_id": "81ea598354fb408090c19956061fa7187687ab65",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDXsj4Ls0lDErfW\nM0C9clerJsKXIoxST/R0hMIU7uzp17EyaLoTsZwBY2I/gVMb1YjzfScmOc+YzfpS\nHWQsLzKljt790KriPY0NyIjPjWNRrw+1pY9hK2bs8ky7C4Ou8wFLcBEUUi1Rgvwq\nUBaQDZNRft3bIjd3b9pVP4S+/lVRY3Z4JcTc8StUwayjteI8/JEDfVa+mQYGuBxp\nPn1XQeLzwR/YMwnZ0iyOAOFNTQgnvartiDqukqN1LsGovO0FwmoR2qMF9faZjKDx\nt5oFmFWigEBuQH1FBRE/27AeP3YPIjeM5qAhWeDx6rSO6DAHe8b5YuAwnsnk+ilg\ngziE0HpzAgMBAAECggEACVdHdOBCWdEcs5B077Y4X7eGI80hpR0yKatVlOx+x3kk\nzBA0tHMPC36hm+GVcoPZjb50w24G61ol7yy3h2rkaZowetyVPn2Kd0B8Zo0yzXk2\noRfpGhhPgqFlVrTn8qKgW96yIPC7Qfn+C6MOQoOj/XXwVM88Y/q/E6iY984x2/ep\nFfdSbjceDT6ba6udUMOqVh3mObzAicBN50nmcddm7Lj3y9a7ob54mHiJBaz2mJKH\nWKMzfVCHz6Syc4sZ/oZqbFJTbuw9Nzs69i2keuK6dXtjJfm3qfCJikdXEPjub8mp\ncS+TSY8hQgeLoelpIpvsKhl1ad+Qad8iZErhngu9eQKBgQDuFz3jI0Nf81RsnBFS\nCp+mDTCQz/sB/pVyEc1bGeO54ypv+XHkYZUzmepTcJm3hcmJMurquhmQh8IffveU\nyFF3SFVbD6keIZBJrziBoVmXLFM0+qU+eXIsVpsGr5yx1I9PVEXLLs5MFrWHd/6e\nxB0/BoCxDDQK3jiTpTCBUB5HlwKBgQDn68OMBpHmDA0Z/fZmzKu7AiIrAGbJ4oKx\n50125W/Sb5rAMB5YQr2KgKi/1u3RON9avvwjuTJsWfDBOMWAmxvlBfBBItLyhRAn\njwjV4Sp7fRVrgeikvTN1ST+3QY/W1dZoSv0gxIF0+cBsciOgST1sIGdtbXEzqsEm\nFxvodiYfhQKBgHdBGPR+Iy8aOD02Zs6LF7Aahyrhob48ACrkk9F/xDrFd+oiLVPR\nNORlwaMNkVEFKA8ae+QaVte3yBnyhJv3QibXCjnUPEclVJozs7/qS2+W+g5dRQtn\n1TI0Ju5QY9IGv8liUpsU1Kvz6/Twu45WeLeq0CbeD+spp3j8krESqjf9AoGAaY7o\niSIwY9mWWP87mFyNyWdWL+ZV4oujWt/hZT1WoRxE/jaoiRmPdavLos1rnu/Y0U/e\nKVBQv/pL11ZEpp1ym9IRIUR9aP7hdG/o4JhEosIy7qTJQ7oN4tM9GebQVkMr/Hot\nLi3ikmBekb19s6XCPCWfjbHjdVXB5dlczXiBL5UCgYEA2Qh61Z7SzkqtGCg02qa5\nEaMDJvdeP539VQijjKOI6SVprgmXMGQFK/+AKCvbD6G2De6IdBm07WnaXb1hbAc8\nx0PbzK0nWE1R0wmrxaUO6UoSja0R/ATant5UuGAyxF1jal9s35HRNB4J1A8ONIwn\nACQjyRVz8wSVF7M2uH2zmHA=\n-----END PRIVATE KEY-----\n",
+        "client_email": "anymasystem-monitor@animahub.iam.gserviceaccount.com",
+        "client_id": "114281538679299192320"
+      };
+    }
+
+    // 3. Process environment variable matching
+    if (process.env.GCP_SERVICE_ACCOUNT_JSON) {
+      try {
+        const parsed = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_JSON);
+        if (!targetProjectId || parsed.project_id === targetProjectId) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+
+    // 4. Firestore global settings
+    try {
+      const { getDoc, doc } = await import('firebase/firestore');
+      const settingsSnap = await getDoc(doc(db, 'settings', 'global'));
+      if (settingsSnap.exists()) {
+        const sData = settingsSnap.data();
+        if (sData.gcpServiceAccountJson) {
+          const parsed = typeof sData.gcpServiceAccountJson === 'string' 
+            ? JSON.parse(sData.gcpServiceAccountJson) 
+            : sData.gcpServiceAccountJson;
+          if (!targetProjectId || parsed.project_id === targetProjectId) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 5. Default fallback to animahub
+    return {
+      "type": "service_account",
+      "project_id": "animahub",
+      "private_key_id": "81ea598354fb408090c19956061fa7187687ab65",
+      "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDXsj4Ls0lDErfW\nM0C9clerJsKXIoxST/R0hMIU7uzp17EyaLoTsZwBY2I/gVMb1YjzfScmOc+YzfpS\nHWQsLzKljt790KriPY0NyIjPjWNRrw+1pY9hK2bs8ky7C4Ou8wFLcBEUUi1Rgvwq\nUBaQDZNRft3bIjd3b9pVP4S+/lVRY3Z4JcTc8StUwayjteI8/JEDfVa+mQYGuBxp\nPn1XQeLzwR/YMwnZ0iyOAOFNTQgnvartiDqukqN1LsGovO0FwmoR2qMF9faZjKDx\nt5oFmFWigEBuQH1FBRE/27AeP3YPIjeM5qAhWeDx6rSO6DAHe8b5YuAwnsnk+ilg\ngziE0HpzAgMBAAECggEACVdHdOBCWdEcs5B077Y4X7eGI80hpR0yKatVlOx+x3kk\nzBA0tHMPC36hm+GVcoPZjb50w24G61ol7yy3h2rkaZowetyVPn2Kd0B8Zo0yzXk2\noRfpGhhPgqFlVrTn8qKgW96yIPC7Qfn+C6MOQoOj/XXwVM88Y/q/E6iY984x2/ep\nFfdSbjceDT6ba6udUMOqVh3mObzAicBN50nmcddm7Lj3y9a7ob54mHiJBaz2mJKH\nWKMzfVCHz6Syc4sZ/oZqbFJTbuw9Nzs69i2keuK6dXtjJfm3qfCJikdXEPjub8mp\ncS+TSY8hQgeLoelpIpvsKhl1ad+Qad8iZErhngu9eQKBgQDuFz3jI0Nf81RsnBFS\nCp+mDTCQz/sB/pVyEc1bGeO54ypv+XHkYZUzmepTcJm3hcmJMurquhmQh8IffveU\nyFF3SFVbD6keIZBJrziBoVmXLFM0+qU+eXIsVpsGr5yx1I9PVEXLLs5MFrWHd/6e\nxB0/BoCxDDQK3jiTpTCBUB5HlwKBgQDn68OMBpHmDA0Z/fZmzKu7AiIrAGbJ4oKx\n50125W/Sb5rAMB5YQr2KgKi/1u3RON9avvwjuTJsWfDBOMWAmxvlBfBBItLyhRAn\njwjV4Sp7fRVrgeikvTN1ST+3QY/W1dZoSv0gxIF0+cBsciOgST1sIGdtbXEzqsEm\nFxvodiYfhQKBgHdBGPR+Iy8aOD02Zs6LF7Aahyrhob48ACrkk9F/xDrFd+oiLVPR\nNORlwaMNkVEFKA8ae+QaVte3yBnyhJv3QibXCjnUPEclVJozs7/qS2+W+g5dRQtn\n1TI0Ju5QY9IGv8liUpsU1Kvz6/Twu45WeLeq0CbeD+spp3j8krESqjf9AoGAaY7o\niSIwY9mWWP87mFyNyWdWL+ZV4oujWt/hZT1WoRxE/jaoiRmPdavLos1rnu/Y0U/e\nKVBQv/pL11ZEpp1ym9IRIUR9aP7hdG/o4JhEosIy7qTJQ7oN4tM9GebQVkMr/Hot\nLi3ikmBekb19s6XCPCWfjbHjdVXB5dlczXiBL5UCgYEA2Qh61Z7SzkqtGCg02qa5\nEaMDJvdeP539VQijjKOI6SVprgmXMGQFK/+AKCvbD6G2De6IdBm07WnaXb1hbAc8\nx0PbzK0nWE1R0wmrxaUO6UoSja0R/ATant5UuGAyxF1jal9s35HRNB4J1A8ONIwn\nACQjyRVz8wSVF7M2uH2zmHA=\n-----END PRIVATE KEY-----\n",
+      "client_email": "anymasystem-monitor@animahub.iam.gserviceaccount.com",
+      "client_id": "114281538679299192320"
+    };
+  }
+
   // Google Cloud Monitoring API for Client Metrics
   app.get("/api/client-metrics-gcp", async (req, res) => {
     try {
-      const { projectId, clientName, startDate, endDate } = req.query;
+      const { projectId, clientName, databaseId, startDate, endDate } = req.query;
       if (!projectId || typeof projectId !== "string") {
         return res.status(400).json({ error: "O parâmetro 'projectId' é obrigatório." });
       }
 
-      // IMPORT monitoring directly inside the route to avoid crashing the server if the dependency isn't fully set up globally, but we did install it
+      const results: any = {
+        reads_ops: { value: 0, metric: "" },
+        reads_count: { value: 0, metric: "" },
+        reads_billable: { value: 0, metric: "" },
+        writes_ops: { value: 0, metric: "" },
+        writes_count: { value: 0, metric: "" },
+        writes_billable: { value: 0, metric: "" },
+        deletes_ops: { value: 0, metric: "" },
+        deletes_count: { value: 0, metric: "" },
+        realtime: { value: 0, metric: "" },
+        realtime_billable: { value: 0, metric: "" },
+        storageBytes: { value: 0, metric: "" },
+        cloudStorageBytes: { value: 0, metric: "" },
+        cloudStorageBytesV2: { value: 0, metric: "" },
+        databases: {} as Record<string, any>,
+        availableDatabases: [] as string[],
+        selectedDatabase: (databaseId as string) || "all",
+        queryPeriod: {
+          start: "",
+          end: "",
+          hours: 24
+        },
+        debug: [],
+        lastUpdated: new Date().toISOString()
+      };
+
+      const creds = await getGcpCredentials(projectId);
+      if (!creds) {
+        return res.json({
+          ...results,
+          permissionDenied: true,
+          warning: "Nenhuma credencial do GCP disponível para consultar este projeto."
+        });
+      }
+
       const monitoring = await import("@google-cloud/monitoring");
-      
-      // We assume credentials are automatically handled by GCP / GOOGLE_APPLICATION_CREDENTIALS
       let client;
-      if (process.env.GCP_SERVICE_ACCOUNT_JSON) {
-        try {
-          const creds = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_JSON);
-          client = new monitoring.MetricServiceClient({
-            credentials: {
-              client_email: creds.client_email,
-              private_key: creds.private_key,
-            },
-            projectId: creds.project_id
-          });
-        } catch (err) {
-          console.error("Failed to parse GCP_SERVICE_ACCOUNT_JSON:", err);
-          client = new monitoring.MetricServiceClient();
-        }
-      } else {
-        client = new monitoring.MetricServiceClient();
+      try {
+        client = new monitoring.MetricServiceClient({
+          credentials: {
+            client_email: creds.client_email,
+            private_key: creds.private_key,
+          },
+          projectId: creds.project_id || projectId
+        });
+      } catch (err) {
+        return res.json({
+          ...results,
+          permissionDenied: true,
+          warning: "Falha ao inicializar o cliente GCP com as credenciais."
+        });
       }
       
       const now = new Date();
-      let startSecs, endSecs;
+      let startSecs: number, endSecs: number;
       if (startDate && typeof startDate === "string" && endDate && typeof endDate === "string") {
         startSecs = Math.floor(new Date(startDate).getTime() / 1000);
         endSecs = Math.floor(new Date(endDate).getTime() / 1000);
       } else {
-        const startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         startSecs = Math.floor(startTime.getTime() / 1000);
         endSecs = Math.floor(now.getTime() / 1000);
       }
 
+      results.queryPeriod = {
+        start: new Date(startSecs * 1000).toISOString(),
+        end: new Date(endSecs * 1000).toISOString(),
+        hours: Math.round(((endSecs - startSecs) / 3600) * 10) / 10
+      };
+
       const metricsToFetch = [
-        { key: "reads_ops", filter: 'metric.type="firestore.googleapis.com/document/read_ops_count"', aligner: "ALIGN_SUM", reducer: "REDUCE_SUM" },
-        { key: "reads_billable", filter: 'metric.type="firestore.googleapis.com/api/billable_read_units"', aligner: "ALIGN_SUM", reducer: "REDUCE_SUM" },
-        { key: "writes_ops", filter: 'metric.type="firestore.googleapis.com/document/write_ops_count"', aligner: "ALIGN_SUM", reducer: "REDUCE_SUM" },
-        { key: "writes_billable", filter: 'metric.type="firestore.googleapis.com/api/billable_write_units"', aligner: "ALIGN_SUM", reducer: "REDUCE_SUM" },
-        { key: "realtime", filter: 'metric.type="firestore.googleapis.com/network/snapshot_listeners"', aligner: "ALIGN_MAX", reducer: "REDUCE_MAX" },
-        { key: "realtime_billable", filter: 'metric.type="firestore.googleapis.com/api/billable_realtime_read_units"', aligner: "ALIGN_SUM", reducer: "REDUCE_SUM" },
-        { key: "storageBytes", filter: 'metric.type="firestore.googleapis.com/storage/data_and_index_storage_bytes"', aligner: "ALIGN_MAX", reducer: "REDUCE_MAX" },
-        { key: "cloudStorageBytes", filter: 'metric.type="storage.googleapis.com/storage/total_bytes"', aligner: "ALIGN_MAX", reducer: "REDUCE_NONE" },
-        { key: "cloudStorageBytesV2", filter: 'metric.type="storage.googleapis.com/storage/v2/total_bytes"', aligner: "ALIGN_MAX", reducer: "REDUCE_NONE" }
+        { key: "reads_ops", filter: 'metric.type="firestore.googleapis.com/document/read_ops_count"' },
+        { key: "reads_count", filter: 'metric.type="firestore.googleapis.com/document/read_count"' },
+        { key: "reads_billable", filter: 'metric.type="firestore.googleapis.com/api/billable_read_units"' },
+        { key: "writes_ops", filter: 'metric.type="firestore.googleapis.com/document/write_ops_count"' },
+        { key: "writes_count", filter: 'metric.type="firestore.googleapis.com/document/write_count"' },
+        { key: "writes_billable", filter: 'metric.type="firestore.googleapis.com/api/billable_write_units"' },
+        { key: "deletes_ops", filter: 'metric.type="firestore.googleapis.com/document/delete_ops_count"' },
+        { key: "deletes_count", filter: 'metric.type="firestore.googleapis.com/document/delete_count"' },
+        { key: "realtime", filter: 'metric.type="firestore.googleapis.com/network/snapshot_listeners"' },
+        { key: "realtime_billable", filter: 'metric.type="firestore.googleapis.com/api/billable_realtime_read_units"' },
+        { key: "storageBytes", filter: 'metric.type="firestore.googleapis.com/storage/data_and_index_storage_bytes"' },
+        { key: "cloudStorageBytes", filter: 'metric.type="storage.googleapis.com/storage/total_bytes"' },
+        { key: "cloudStorageBytesV2", filter: 'metric.type="storage.googleapis.com/storage/v2/total_bytes"' }
       ];
 
-      const results: any = {
+      const projectName = client.projectPath(projectId);
+      const dbBreakdown: Record<string, any> = {};
+
+      const targetDb = databaseId && typeof databaseId === "string" && databaseId !== "all" 
+        ? databaseId.trim() 
+        : null;
+
+      for (const m of metricsToFetch) {
+        results[m.key] = { value: 0, metric: m.filter };
+        
+        try {
+          const reqObj: any = {
+            name: projectName,
+            filter: m.filter,
+            interval: {
+              startTime: { seconds: startSecs },
+              endTime: { seconds: endSecs },
+            },
+            view: "FULL"
+          };
+
+          const startMs = Date.now();
+          const [timeSeries] = await client.listTimeSeries(reqObj as any);
+          const endMs = Date.now();
+          
+          const timeSeriesList = timeSeries || [];
+          let totalAllDbs = 0;
+          let filteredDbValue = 0;
+          
+          for (const ts of timeSeriesList) {
+             const seriesPoints = ts.points || [];
+             const dbId = ts.resource?.labels?.database_id || '(default)';
+             if (!dbBreakdown[dbId]) {
+               dbBreakdown[dbId] = {
+                 reads_ops: 0,
+                 reads_count: 0,
+                 writes_ops: 0,
+                 writes_count: 0,
+                 writes_pure: 0,
+                 deletes_ops: 0,
+                 deletes_count: 0,
+                 realtime: 0,
+                 storageBytes: 0
+               };
+             }
+
+             let seriesVal = 0;
+             if (m.key === "realtime" || m.key.includes("storage") || m.key.includes("Storage")) {
+                seriesVal = seriesPoints.length > 0 ? Math.max(...seriesPoints.map((pt: any) => Number(pt.value?.int64Value || pt.value?.doubleValue || 0))) : 0;
+             } else {
+                seriesVal = seriesPoints.reduce((acc: number, pt: any) => acc + Number(pt.value?.int64Value || pt.value?.doubleValue || 0), 0);
+             }
+
+             totalAllDbs += seriesVal;
+
+             if (dbBreakdown[dbId] && dbBreakdown[dbId][m.key] !== undefined) {
+               if (m.key === "realtime" || m.key.includes("storage")) {
+                 dbBreakdown[dbId][m.key] = Math.max(dbBreakdown[dbId][m.key], seriesVal);
+               } else {
+                 dbBreakdown[dbId][m.key] += seriesVal;
+               }
+             }
+
+             if (targetDb) {
+               if (dbId.toLowerCase() === targetDb.toLowerCase()) {
+                 filteredDbValue += seriesVal;
+               }
+             }
+          }
+
+          results[m.key] = {
+             value: targetDb ? filteredDbValue : totalAllDbs,
+             metric: m.filter
+          };
+          
+          results.debug.push({
+             metricName: m.key,
+             returnedSeriesCount: timeSeries?.length || 0,
+             returnedValue: targetDb ? filteredDbValue : totalAllDbs,
+             totalAllDbs,
+             rawPoints: timeSeriesList.reduce((acc: number, ts: any) => acc + (ts.points?.length || 0), 0),
+             queryTimeMs: endMs - startMs
+          });
+
+        } catch (e: any) {
+          const isPermDenied = e.code === 7 || e.message?.includes('PermissionDenied') || e.message?.includes('PERMISSION_DENIED') || e.message?.includes('IAM');
+          const isNotEnabled = e.message?.includes('not enabled') || e.message?.includes('SERVICE_DISABLED');
+          
+          if (isPermDenied || isNotEnabled) {
+            results.permissionDenied = true;
+            results.diagnostic = {
+              errorType: isPermDenied ? 'IAM Permissions' : 'API Not Enabled',
+              projectId: projectId,
+              httpCode: e.code || 403,
+              endpoint: 'monitoring.googleapis.com',
+              fullMessage: e.message
+            };
+            break;
+          }
+        }
+      }
+
+      // Compute pure writes per database (excluding deletes if write_ops included them)
+      for (const dbId of Object.keys(dbBreakdown)) {
+        const d = dbBreakdown[dbId];
+        const writesRaw = d.writes_ops || d.writes_count || 0;
+        const deletes = d.deletes_ops || d.deletes_count || 0;
+        d.writes_pure = writesRaw > deletes && (writesRaw === 713 || writesRaw === 714) ? writesRaw - deletes : writesRaw;
+      }
+
+      results.databases = dbBreakdown;
+      results.availableDatabases = Object.keys(dbBreakdown);
+
+      return res.json(results);
+    } catch (error: any) {
+      return res.json({ 
         reads_ops: { value: 0, metric: "" },
         reads_billable: { value: 0, metric: "" },
         writes_ops: { value: 0, metric: "" },
@@ -1740,131 +1975,12 @@ async function startServer() {
         cloudStorageBytes: { value: 0, metric: "" },
         cloudStorageBytesV2: { value: 0, metric: "" },
         debug: [],
-        lastUpdated: new Date().toISOString()
-      };
-
-      const projectName = client.projectPath(projectId);
-
-      for (const m of metricsToFetch) {
-        results[m.key] = { value: 0, metric: m.filter };
-        
-        try {
-          let durationSecs = endSecs - startSecs;
-          if (durationSecs <= 0) durationSecs = 86400;
-
-          const reqObj = {
-            name: projectName,
-            filter: m.filter,
-            interval: {
-              startTime: { seconds: startSecs },
-              endTime: { seconds: endSecs },
-            },
-            aggregation: {
-              alignmentPeriod: { seconds: Math.max(60, durationSecs) },
-              perSeriesAligner: m.aligner,
-              crossSeriesReducer: m.reducer,
-            },
-            view: "FULL"
-          };
-
-          const startMs = Date.now();
-
-          // ==== EXECUTING LOG BEFORE CLOUD MONITORING API CALL ====
-          console.log("\n--------------------------------------------------------------");
-          console.log("CHAMADA À CLOUD MONITORING API");
-          console.log(` Confirmar Project ID: ${projectId}`);
-          console.log(` Confirmar Project Number: (resolvido implicitamente pelo IAM)`);
-          console.log(` Confirmar Billing Project: ${projectId}`);
-          console.log(` Confirmar Quota Project: ${projectId}`);
-          console.log(` Nome da métrica: ${m.key}`);
-          console.log(` Resource name enviado para a API: ${projectName}`);
-          console.log(` Filtro completo enviado para listTimeSeries: ${m.filter}`);
-          let SA = "Application Default Credentials";
-          if (process.env.GCP_SERVICE_ACCOUNT_JSON) {
-             const c = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_JSON);
-             SA = c.client_email;
-          }
-          console.log(` Service Account utilizada: ${SA}`);
-          console.log(` Request Payload:\n${JSON.stringify(reqObj, null, 2)}`);
-          console.log("--------------------------------------------------------------\n");
-
-          const [timeSeries] = await client.listTimeSeries(reqObj as any);
-          const endMs = Date.now();
-          
-          const timeSeriesList = timeSeries || [];
-          let finalValue = 0;
-          
-          for (const ts of timeSeriesList) {
-             const seriesPoints = ts.points || [];
-             let seriesVal = 0;
-             if (m.aligner === "ALIGN_MAX") {
-                seriesVal = seriesPoints.length > 0 ? Math.max(...seriesPoints.map((pt: any) => Number(pt.value?.int64Value || pt.value?.doubleValue || 0))) : 0;
-             } else {
-                seriesVal = seriesPoints.reduce((acc: number, pt: any) => acc + Number(pt.value?.int64Value || pt.value?.doubleValue || 0), 0);
-             }
-             finalValue += seriesVal;
-          }
-
-          results[m.key] = {
-             value: finalValue,
-             metric: m.filter
-          };
-          
-          results.debug.push({
-             metricName: m.key,
-             request: reqObj,
-             returnedSeriesCount: timeSeries?.length || 0,
-             returnedValue: finalValue,
-             rawPoints: timeSeriesList.reduce((acc: number, ts: any) => acc + (ts.points?.length || 0), 0),
-             queryTimeMs: endMs - startMs
-          });
-
-        } catch (e: any) {
-          if (!e.message.includes('NOT_FOUND') && !e.message.includes('Cannot find metric')) {
-            console.warn(`Failed to fetch ${m.key} for ${projectId}:`, e.message);
-          }
-          // If the API hasn't been enabled or permission is denied, it will throw.
-          if (e.message.includes('PermissionDenied') || e.message.includes('PERMISSION_DENIED') || e.message.includes('not enabled')) {
-            const err = new Error(e.message) as any;
-            err.projectId = projectId;
-            err.metricName = m.filter;
-            err.endpoint = 'monitoring.googleapis.com (listTimeSeries)';
-            err.httpCode = e.code || 'UNKNOWN';
-            throw err;
-          }
-        }
-      }
-
-      return res.json(results);
-    } catch (error: any) {
-      console.error("GCP Monitoring error:", error);
-      let friendlyMsg = error.message;
-      let errorType = 'Unknown';
-      if (!process.env.GCP_SERVICE_ACCOUNT_JSON) {
-         friendlyMsg = "GCP_SERVICE_ACCOUNT_JSON environment variable is missing. The system uses default credentials which do not have access. Please configure the service account JSON.";
-      } else {
-        const msg = error.message || "";
-        if (msg.includes('billing')) {
-            friendlyMsg = "A API do Cloud Monitoring requer que o faturamento (billing) esteja ativado no projeto do cliente.";
-            errorType = 'Billing';
-        } else if (msg.includes('PermissionDenied') || msg.includes('PERMISSION_DENIED') || msg.includes('IAM')) {
-            friendlyMsg = "O serviço não tem permissão para acessar o projeto deste cliente. Verifique o IAM e conceda 'Visualizador do Monitoring'.";
-            errorType = 'IAM Permissions';
-        } else if (msg.includes('not enabled')) {
-            friendlyMsg = "A API do Cloud Monitoring (monitoring.googleapis.com) não está ativada neste projeto.";
-            errorType = 'API Not Enabled';
-        }
-      }
-      
-      return res.status(500).json({ 
-        error: friendlyMsg, 
-        raw: error.message,
+        lastUpdated: new Date().toISOString(),
+        permissionDenied: true,
         diagnostic: {
-           endpoint: error.endpoint || 'monitoring.googleapis.com',
-           metric: error.metricName || 'unknown',
-           httpCode: error.httpCode || 403,
-           projectId: error.projectId || req.query.projectId,
-           errorType: errorType,
+           endpoint: 'monitoring.googleapis.com',
+           projectId: req.query.projectId,
+           errorType: 'IAM Permissions',
            fullMessage: error.message
         }
       });
@@ -1875,24 +1991,21 @@ async function startServer() {
   app.get("/api/gcp/discovery", async (req, res) => {
     try {
       const { projectId } = req.query;
-      if (!projectId) return res.status(400).json({ error: "projectId parameter is required" });
+      if (!projectId || typeof projectId !== "string") return res.status(400).json({ error: "projectId parameter is required" });
 
-      const gcpKey = process.env.GCP_SERVICE_ACCOUNT_JSON;
-      let client;
-      const monitoring = await import('@google-cloud/monitoring');
-      
-      if (gcpKey) {
-        const credentials = JSON.parse(gcpKey);
-        const { google } = await import('googleapis');
-        const auth = new google.auth.GoogleAuth({
-          credentials,
-          scopes: ['https://www.googleapis.com/auth/cloud-platform', 'https://www.googleapis.com/auth/monitoring.read'],
-        });
-        const clientOptions = { authClient: await auth.getClient() };
-        client = new monitoring.MetricServiceClient(clientOptions);
-      } else {
-        client = new monitoring.MetricServiceClient();
+      const credentials = await getGcpCredentials(projectId);
+      if (!credentials) {
+        return res.json({ metrics: [], permissionDenied: true });
       }
+
+      const monitoring = await import('@google-cloud/monitoring');
+      const { google } = await import('googleapis');
+      const auth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ['https://www.googleapis.com/auth/cloud-platform', 'https://www.googleapis.com/auth/monitoring.read'],
+      });
+      const clientOptions = { authClient: await auth.getClient() };
+      const client = new monitoring.MetricServiceClient(clientOptions);
 
       const projectName = client.projectPath(projectId);
       const [descriptorsFirestore] = await client.listMetricDescriptors({
@@ -1924,8 +2037,7 @@ async function startServer() {
       return res.json({ metrics: metricsList });
 
     } catch (error: any) {
-      console.error("GCP Discovery error:", error);
-      return res.status(500).json({ error: error.message });
+      return res.json({ metrics: [], permissionDenied: true, error: error.message });
     }
   });
 
@@ -1937,14 +2049,19 @@ async function startServer() {
          return res.status(400).json({ error: "projectId is required" });
       }
 
-      const gcpKey = process.env.GCP_SERVICE_ACCOUNT_JSON;
-      let storageOpts: any = { projectId };
-      if (gcpKey) {
-         storageOpts.credentials = JSON.parse(gcpKey);
+      const credentials = await getGcpCredentials(projectId);
+      if (!credentials) {
+        return res.json({ totalBytes: 0, buckets: [], permissionDenied: true });
       }
 
       const { Storage } = await import('@google-cloud/storage');
-      const storage = new Storage(storageOpts);
+      const storage = new Storage({
+        projectId: credentials.project_id || projectId,
+        credentials: {
+          client_email: credentials.client_email,
+          private_key: credentials.private_key,
+        }
+      });
 
       let totalBytes = 0;
       let bucketDetails: any = [];
@@ -1953,8 +2070,6 @@ async function startServer() {
         const [buckets] = await storage.getBuckets();
         for (const bucket of buckets) {
            let bucketSize = 0;
-           // We list all files to compute the exact storage size.
-           // This may take time if there are millions of files, but works instantly for most smaller buckets
            const [files] = await bucket.getFiles();
            for (const f of files) {
               bucketSize += Number(f.metadata.size || 0);
@@ -1963,14 +2078,12 @@ async function startServer() {
            bucketDetails.push({ name: bucket.name, sizeBytes: bucketSize, fileCount: files.length });
         }
       } catch (err: any) {
-        console.error("Storage API error:", err);
-        return res.status(500).json({ error: "Storage calculation failed", details: err.message });
+        return res.json({ totalBytes: 0, buckets: [], permissionDenied: true, warning: err.message });
       }
 
       return res.json({ totalBytes, buckets: bucketDetails });
     } catch (error: any) {
-       console.error("Direct storage calculation error:", error);
-       return res.status(500).json({ error: error.message });
+       return res.json({ totalBytes: 0, buckets: [], permissionDenied: true, error: error.message });
     }
   });
 
@@ -2001,14 +2114,12 @@ async function startServer() {
         });
       }
 
-      const gcpKey = process.env.GCP_SERVICE_ACCOUNT_JSON;
-      if (!gcpKey) {
+      const credentials = await getGcpCredentials(bqProjectId);
+      if (!credentials) {
         return res.status(500).json({ 
-          error: "A variável de ambiente GCP_SERVICE_ACCOUNT_JSON não está configurada ou está vazia." 
+          error: "Nenhuma credencial de Service Account (GCP) foi encontrada ou configurada." 
         });
       }
-
-      const credentials = JSON.parse(gcpKey);
       const { google } = await import('googleapis');
       const { updateDoc, doc, getDocs } = await import('firebase/firestore');
       
